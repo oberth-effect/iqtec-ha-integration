@@ -1,6 +1,7 @@
 {
   "domain": "iqtec",
   "name": "IQtec Smart Home",
+  "version": "0.1.4",
   "codeowners": [
     "@oberth-effect"
   ],
