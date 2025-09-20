@@ -1,0 +1,18 @@
+{
+  "domain": "iqtec",
+  "name": "IQtec Smart Home",
+  "codeowners": [
+    "@oberth-effect"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://www.home-assistant.io/integrations/iqtec",
+  "homekit": {},
+  "iot_class": "local_polling",
+  "quality_scale": "bronze",
+  "requirements": [
+    "piqtec==0.1.4"
+  ],
+  "ssdp": [],
+  "zeroconf": []
+}
