@@ -23,6 +23,7 @@ class IQTecData:
 
     coordinator: DataUpdateCoordinator
     cover_use_short_tilt: bool
+    correction_time: int
     # cover_config: dict[str, Any]
 
 

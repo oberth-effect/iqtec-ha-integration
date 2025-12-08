@@ -42,7 +42,10 @@ async def async_setup_entry(
         int(idx.removeprefix("_CALENDAR_")): calname for idx, calname in raw_cals
     }
     async_add_entities(
-        IqTecClimate(coordinator, idx, calendars) for idx in coordinator.hub.rooms
+        IqTecClimate(
+            coordinator, idx, calendars, config_entry.runtime_data.correction_time
+        )
+        for idx in coordinator.hub.rooms
     )
 
 
@@ -69,7 +72,11 @@ class IqTecClimate(IqTecEntity, ClimateEntity):
     temperature_unit = UnitOfTemperature.CELSIUS
 
     def __init__(
-        self, coordinator: IqTecCoordinator, idx: str, calendars: dict[int, str]
+        self,
+        coordinator: IqTecCoordinator,
+        idx: str,
+        calendars: dict[int, str],
+        manaul_time: int,
     ) -> None:
         """Initialise IQtec Climate."""
         super().__init__(coordinator, idx)
@@ -79,6 +86,7 @@ class IqTecClimate(IqTecEntity, ClimateEntity):
             identifiers={(DOMAIN, idx)}, name=self.iqtec_state.name
         )
         self._calendars = {idx: f"({idx}) {n}" for idx, n in calendars.items()}
+        self.manual_time = manaul_time
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -201,6 +209,10 @@ class IqTecClimate(IqTecEntity, ClimateEntity):
         self.hass.async_add_executor_job(
             self._hub.rooms[self.idx].set_correction_mode,
             ROOM_CORR_MODES.MANUAL,
+        )
+        self.hass.async_add_executor_job(
+            self._hub.rooms[self.idx].set_correction_time,
+            self.manual_time,
         )
         self.hass.async_add_executor_job(
             self._hub.rooms[self.idx].set_correction_temperature,

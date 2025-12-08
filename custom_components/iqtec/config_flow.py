@@ -21,6 +21,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
         vol.Required("cover_use_short_tilt"): bool,
+        vol.Optional("correction_timeout", default=24): int,
     }
 )
 
@@ -53,7 +54,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     return {"url": data[CONF_HOST], "name": c.name, "sunblinds": c.sunblinds}
 
 
-class ConfigFlow(ConfigFlow, domain=DOMAIN):
+class IQTecConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for IQtec Smart Home."""
 
     VERSION = 1

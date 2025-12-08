@@ -11,6 +11,7 @@
         "step": {
             "user": {
                 "data": {
+                    "correction_timeout": "Manual Climate Timout (5 min intervals) [default=24 (2 hours)]",
                     "cover_use_short_tilt": "Covers use short tilt to open",
                     "host": "Host"
                 }

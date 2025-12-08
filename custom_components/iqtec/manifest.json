@@ -1,7 +1,7 @@
 {
   "domain": "iqtec",
   "name": "IQtec Smart Home",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "codeowners": [
     "@oberth-effect"
   ],
@@ -12,7 +12,7 @@
   "iot_class": "local_polling",
   "quality_scale": "bronze",
   "requirements": [
-    "piqtec==0.1.4"
+    "piqtec==0.1.5"
   ],
   "ssdp": [],
   "zeroconf": []

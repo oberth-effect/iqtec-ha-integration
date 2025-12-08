@@ -4,7 +4,8 @@
       "user": {
         "data": {
           "host": "[%key:common::config_flow::data::host%]",
-          "cover_use_short_tilt": "Covers use short tilt to open"
+          "cover_use_short_tilt": "Covers use short tilt to open",
+          "correction_timeout": "Manual Climate Timout (5 min intervals) [default=24 (2 hours)]"
         }
       }
     },

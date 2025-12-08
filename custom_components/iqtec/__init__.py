@@ -32,7 +32,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: IqTecConfigEntry) -> boo
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = IQTecData(
-        coordinator=coordinator, cover_use_short_tilt=entry.data["cover_use_short_tilt"]
+        coordinator=coordinator,
+        cover_use_short_tilt=entry.data["cover_use_short_tilt"],
+        correction_time=entry.data["correction_timeout"],
     )
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
