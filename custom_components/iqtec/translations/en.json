@@ -22,6 +22,26 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "data": {},
+        "description": "Some calendars are typed as temperature profiles in the controller even though they drive something on or off. Choose how each should be shown.\n\n{names}",
+        "title": "Calendar display"
+      }
+    }
+  },
+  "selector": {
+    "display_type": {
+      "options": {
+        "BLIND": "Blind (Down / Tilted / Up)",
+        "ON_OFF": "On / Off",
+        "ON_OFF2": "On / Off (alternate)",
+        "TEMPERATURE": "Temperature (Nobody / Night / Day)",
+        "VALUE": "Value (Nobody / Night / Day)"
+      }
+    }
+  },
   "services": {
     "set_calendar": {
       "description": "Replace an IQtec calendar's schedule, setpoints or name.",

@@ -45,5 +45,25 @@
         }
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Calendar display",
+        "description": "Some calendars are typed as temperature profiles in the controller even though they drive something on or off. Choose how each should be shown.\n\n{names}",
+        "data": {}
+      }
+    }
+  },
+  "selector": {
+    "display_type": {
+      "options": {
+        "TEMPERATURE": "Temperature (Nobody / Night / Day)",
+        "BLIND": "Blind (Down / Tilted / Up)",
+        "ON_OFF": "On / Off",
+        "ON_OFF2": "On / Off (alternate)",
+        "VALUE": "Value (Nobody / Night / Day)"
+      }
+    }
   }
 }
