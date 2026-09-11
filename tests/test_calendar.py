@@ -1,5 +1,6 @@
 """Tests for the calendar entity and the set_calendar service."""
 
+from datetime import datetime, timedelta
 from unittest.mock import ANY
 
 from piqtec import CalendarLevel, IQtecConnectionError
@@ -15,6 +16,7 @@ from custom_components.iqtec.const import (
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.util import dt as dt_util
 
 ENTRY_DATA = {
     CONF_HOST: "iqtec.home",
@@ -140,3 +142,44 @@ async def test_level_names_are_published(hass: HomeAssistant, mock_controller) -
 
     names = hass.states.get(ENTITY).attributes["level_names"]
     assert names == [level.name.title() for level in CalendarLevel]
+
+
+CALENDAR_ENTITY = "calendar.generalprofile"
+
+
+async def test_schedule_calendar_lists_periods(hass: HomeAssistant, mock_controller) -> None:
+    """The weekly schedule is projected onto dated events."""
+    await setup_entry(hass)
+
+    start = dt_util.start_of_local_day(datetime(2026, 9, 14))  # a Monday
+    events = await hass.services.async_call(
+        "calendar",
+        "get_events",
+        {"entity_id": CALENDAR_ENTITY, "start_date_time": start, "end_date_time": start + timedelta(days=1)},
+        blocking=True,
+        return_response=True,
+    )
+    listed = events[CALENDAR_ENTITY]["events"]
+    assert listed, "a day must produce events"
+    # Contiguous: the controller is always at some level.
+    assert all(a["end"] == b["start"] for a, b in zip(listed, listed[1:], strict=False))
+    assert "Day" in listed[1]["summary"]
+    assert "20.0" in listed[1]["summary"], "temperature calendars name their setpoint"
+
+
+async def test_schedule_calendar_has_a_current_event(hass: HomeAssistant, mock_controller) -> None:
+    """The entity always has a period in force, so its state stays on."""
+    await setup_entry(hass)
+
+    state = hass.states.get(CALENDAR_ENTITY)
+    assert state is not None
+    assert state.state == "on"
+    assert state.attributes["message"]
+
+
+async def test_schedule_calendar_is_read_only(hass: HomeAssistant, mock_controller) -> None:
+    """Creating events is not offered; editing goes through set_calendar."""
+    await setup_entry(hass)
+
+    state = hass.states.get(CALENDAR_ENTITY)
+    assert not state.attributes.get("supported_features")
