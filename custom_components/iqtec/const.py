@@ -14,6 +14,10 @@ CALENDAR_SCAN_INTERVAL = timedelta(minutes=5)
 
 SERVICE_SET_CALENDAR = "set_calendar"
 
+# Per-calendar display override. data.xml types some calendars TEMPERATURE that
+# are really on/off schedules; the OEM guesses from the name, we ask instead.
+CONF_DISPLAY_TYPES = "calendar_display_types"
+
 ATTR_CALENDAR_ID = "calendar_id"
 ATTR_TEMPERATURES = "temperatures"
 ATTR_DAYS = "days"

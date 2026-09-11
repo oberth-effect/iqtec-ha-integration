@@ -5,15 +5,22 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from piqtec import Controller, IQtecError
+from piqtec import CalendarType, Controller, IQtecError
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig, SelectSelectorMode
 
-from .const import CONF_CORRECTION_TIMEOUT, CONF_COVER_USE_SHORT_TILT, DEFAULT_CORRECTION_TIMEOUT, DOMAIN
+from .const import (
+    CONF_CORRECTION_TIMEOUT,
+    CONF_COVER_USE_SHORT_TILT,
+    CONF_DISPLAY_TYPES,
+    DEFAULT_CORRECTION_TIMEOUT,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +53,12 @@ class IQTecConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Offer the per-calendar display overrides."""
+        return IQTecOptionsFlow()
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
@@ -70,3 +83,44 @@ class IQTecConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
+
+
+class IQTecOptionsFlow(OptionsFlow):
+    """Let the user say how each calendar should be shown.
+
+    data.xml types several calendars TEMPERATURE that really drive something
+    on/off, and the OEM application guesses from the calendar's name. Rather
+    than matching names, ask once and remember.
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Show one display type per calendar."""
+        data = getattr(self.config_entry, "runtime_data", None)
+        calendars = (data.calendars.data if data else None) or {}
+        hub_calendars = data.calendars.hub.calendars if data else {}
+        # Field keys read as "Calendar 3" and map back to the controller's id.
+        keys = {f"calendar_{hub_calendars[idx].index}": idx for idx in calendars}
+
+        if user_input is not None:
+            chosen = {keys[key]: value for key, value in user_input.items() if key in keys}
+            return self.async_create_entry(data={**self.config_entry.options, CONF_DISPLAY_TYPES: chosen})
+
+        current = self.config_entry.options.get(CONF_DISPLAY_TYPES) or {}
+        selector = SelectSelector(
+            SelectSelectorConfig(
+                options=[t.value for t in CalendarType],
+                mode=SelectSelectorMode.DROPDOWN,
+                translation_key="display_type",
+            )
+        )
+        schema = vol.Schema(
+            {
+                vol.Required(key, default=current.get(idx) or str(calendars[idx].calendar_type)): selector
+                for key, idx in keys.items()
+            }
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            description_placeholders={"names": ", ".join(f"{k} = {calendars[i].name}" for k, i in keys.items())},
+        )

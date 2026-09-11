@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from piqtec import CalendarPeriod, CalendarState
+from piqtec import CalendarPeriod, CalendarState, CalendarType
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.core import HomeAssistant
@@ -22,7 +22,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .calendar_schedule import TWO_STATE_TYPES
+from .calendar_schedule import display_type, level_names
 from .const import DOMAIN
 from .coordinator import IqTecCalendarCoordinator, IqTecConfigEntry
 from .entity import IqTecEntity
@@ -70,20 +70,19 @@ class IqTecScheduleCalendar(IqTecEntity, CalendarEntity):
         """Whether the schedule has been read."""
         return super().available and self.iqtec_state is not None
 
-    def _label(self, level: int) -> str:
+    @property
+    def _shown_as(self):
         state = self.iqtec_state
-        if state is None:
-            return str(level)
-        if state.calendar_type in TWO_STATE_TYPES:
-            return "On" if level == 2 else "Off"
-        if str(state.calendar_type) == "BLIND":
-            return {2: "Up", 1: "Tilted", 0: "Down"}[level]
-        return ["Nobody", "Night", "Day"][level]
+        return None if state is None else display_type(self.coordinator.config_entry, self.idx, state)
+
+    def _label(self, level: int) -> str:
+        shown_as = self._shown_as
+        return str(level) if shown_as is None else level_names(shown_as)[level]
 
     def _as_event(self, period: CalendarPeriod) -> CalendarEvent:
         state = self.iqtec_state
         summary = self._label(period.level)
-        if state is not None and str(state.calendar_type) == "TEMPERATURE":
+        if state is not None and self._shown_as is CalendarType.TEMPERATURE:
             heating = state.temperature_for(period.level)
             cooling = state.temperature_for(period.level, cooling=True)
             if heating is not None:

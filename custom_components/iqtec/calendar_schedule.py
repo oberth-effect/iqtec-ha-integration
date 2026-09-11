@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from piqtec import CalendarDay, CalendarEdge, CalendarLevel, CalendarState, CalendarType, IQtecError
+from piqtec import TWO_STATE_CALENDARS, CalendarDay, CalendarEdge, CalendarState, CalendarType, IQtecError
 import voluptuous as vol
 
 from homeassistant.components.sensor import SensorEntity
@@ -25,6 +25,7 @@ from .const import (
     ATTR_DAYS,
     ATTR_TEMPERATURES,
     ATTR_TRANSITIONS,
+    CONF_DISPLAY_TYPES,
     DOMAIN,
     SERVICE_SET_CALENDAR,
 )
@@ -34,7 +35,34 @@ from .entity import IqTecEntity
 _LOGGER = logging.getLogger(__name__)
 
 #: Calendar types that only ever show two states.
-TWO_STATE_TYPES = {CalendarType.ON_OFF, CalendarType.ON_OFF2}
+TWO_STATE_TYPES = set(TWO_STATE_CALENDARS)
+
+#: Level names per display type, following the controller's own outputs
+#: (OutNobody, OutNight, OutDay) and the OEM application's wording.
+LEVEL_NAMES: dict[CalendarType, list[str]] = {
+    CalendarType.TEMPERATURE: ["Nobody", "Night", "Day"],
+    CalendarType.VALUE: ["Nobody", "Night", "Day"],
+    CalendarType.BLIND: ["Down", "Tilted", "Up"],
+    CalendarType.ON_OFF: ["Off", "Off", "On"],
+    CalendarType.ON_OFF2: ["Off", "Off", "On"],
+}
+
+
+def display_type(entry: IqTecConfigEntry, idx: str, state: CalendarState) -> CalendarType:
+    """How a calendar should be shown, honouring the user's override."""
+    configured = (entry.options.get(CONF_DISPLAY_TYPES) or {}).get(idx)
+    if configured:
+        try:
+            return CalendarType(configured)
+        except ValueError:
+            _LOGGER.warning("Unknown display type %r for %s", configured, idx)
+    return state.calendar_type
+
+
+def level_names(shown_as: CalendarType) -> list[str]:
+    """Labels for levels 0, 1 and 2 under a display type."""
+    return LEVEL_NAMES.get(shown_as, LEVEL_NAMES[CalendarType.TEMPERATURE])
+
 
 DAY_NAMES = [
     "monday",
@@ -69,14 +97,20 @@ SET_CALENDAR_SCHEMA = vol.Schema(
 )
 
 
-def state_as_attributes(idx: str, state: CalendarState, index: int) -> dict[str, Any]:
+def state_as_attributes(
+    idx: str, state: CalendarState, index: int, shown_as: CalendarType | None = None
+) -> dict[str, Any]:
     """Render the calendar the way the card reads it and the service accepts it."""
+    shown_as = shown_as or state.calendar_type
     return {
         "calendar_key": idx,
         "calendar_index": index,
+        # What the controller declares, and what it is shown as; they differ
+        # when the user has overridden a mistyped calendar.
         "calendar_type": str(state.calendar_type),
-        "levels": 2 if state.calendar_type in TWO_STATE_TYPES else 3,
-        "level_names": [level.name.title() for level in CalendarLevel],
+        "display_type": str(shown_as),
+        "levels": 2 if shown_as in TWO_STATE_TYPES else 3,
+        "level_names": level_names(shown_as),
         ATTR_TEMPERATURES: list(state.temperatures),
         "heating_temperatures": state.heating_temperatures,
         "cooling_temperatures": state.cooling_temperatures,
@@ -143,7 +177,13 @@ class IqTecCalendarSensor(IqTecEntity, SensorEntity):
         state = self.iqtec_state
         if state is None:
             return {}
-        return state_as_attributes(self.idx, state, self.coordinator.hub.calendars[self.idx].index)
+        entry = self.coordinator.config_entry
+        return state_as_attributes(
+            self.idx,
+            state,
+            self.coordinator.hub.calendars[self.idx].index,
+            display_type(entry, self.idx, state),
+        )
 
 
 async def _async_set_calendar(hass: HomeAssistant, call: ServiceCall) -> None:

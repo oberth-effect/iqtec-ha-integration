@@ -63,9 +63,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: IqTecConfigEntry) -> boo
         correction_time=entry.data.get(CONF_CORRECTION_TIMEOUT, DEFAULT_CORRECTION_TIMEOUT),
     )
     async_register_services(hass)
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
     return True
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: IqTecConfigEntry) -> None:
+    """Rebuild the entities after the display options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: IqTecConfigEntry) -> bool:
