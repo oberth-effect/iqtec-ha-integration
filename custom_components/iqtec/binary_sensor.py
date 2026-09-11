@@ -1,17 +1,15 @@
 """IQtec Binary Sensor."""
 
-import logging
+from __future__ import annotations
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
-from .coordinator import IqTecConfigEntry, IqTecCoordinator
-from .entity import IqTecEntity
+from .coordinator import IqTecConfigEntry
+from .entity import IqTecVariableEntity
 
-_LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
@@ -19,48 +17,21 @@ async def async_setup_entry(
     config_entry: IqTecConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Setup Sensor entries."""
+    """Set up binary sensor entries."""
     coordinator = config_entry.runtime_data.coordinator
 
-    sensors = []
+    async_add_entities(
+        IqTecBinarySensor(coordinator, idx, device_idx)
+        for device_idx, device in coordinator.hub.devices.items()
+        for idx, api in device.sensor_apis.items()
+        if api.typ in {"OnOff", "bool"}
+    )
 
-    for d_idx, d in coordinator.hub.devices.items():
-        for idx, a in d.sensor_apis.items():
-            if a.typ in {"OnOff", "bool"}:
-                sensors.append(IqTecBinarySensor(coordinator, idx, d_idx))
-    async_add_entities(sensors)
 
-
-class IqTecBinarySensor(IqTecEntity, BinarySensorEntity):
+class IqTecBinarySensor(IqTecVariableEntity, BinarySensorEntity):
     """IQtec Binary Sensor Entity."""
 
-    def __init__(self, coordinator: IqTecCoordinator, idx: str, device: str) -> None:
-        """Initialise IQtec Temp sensor."""
-        super().__init__(coordinator, idx)
-        self._device_idx = device
-        self._val_idx = idx.split(".")[1]
-
-        self.entity_registry_visible_default = False
-
-        self._attr_device_info = self._default_device_info | DeviceInfo(
-            identifiers={(DOMAIN, device)}, name=f"_{device}"
-        )
-
     @property
-    def name(self) -> str:
-        """Return the entity name."""
-        return self.idx
-
-    @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        """Returns raw iqtec state attributes."""
-        return {}
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        val = self.coordinator.data.devices[self._device_idx].sensors[self.idx]
-        if "!" not in val:
-            self._attr_is_on = bool(int(val))
-        _LOGGER.debug("Updating device: %s", self.idx)
-        self.async_write_ha_state()
+    def is_on(self) -> bool | None:
+        """Whether the variable is set."""
+        return None if self.raw_value is None else bool(self.raw_value)

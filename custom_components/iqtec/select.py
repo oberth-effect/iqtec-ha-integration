@@ -1,17 +1,17 @@
 """IQtec Selects."""
 
-import logging
+from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
-from .coordinator import IqTecConfigEntry, IqTecCoordinator
-from .entity import IqTecEntity
+from .coordinator import IqTecConfigEntry
+from .entity import IqTecVariableEntity
 
-_LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
+
+_ON_OFF_AUTO = {0: "off", 1: "on", 2: "auto"}
 
 
 async def async_setup_entry(
@@ -19,63 +19,29 @@ async def async_setup_entry(
     config_entry: IqTecConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Setup Select entries."""
+    """Set up select entries."""
     coordinator = config_entry.runtime_data.coordinator
 
-    switches = []
-    for d_idx, d in coordinator.hub.devices.items():
-        for idx, a in d.switch_apis.items():
-            if a.typ == "OnOffAuto":
-                switches.append(IqTecOnOffAuto(coordinator, idx, d_idx))
-    async_add_entities(switches)
+    async_add_entities(
+        IqTecOnOffAuto(coordinator, idx, device_idx)
+        for device_idx, device in coordinator.hub.devices.items()
+        for idx, api in device.switch_apis.items()
+        if api.typ == "OnOffAuto"
+    )
 
 
-class IqTecOnOffAuto(IqTecEntity, SelectEntity):
+class IqTecOnOffAuto(IqTecVariableEntity, SelectEntity):
     """IQtec OnOffAuto Entity."""
 
-    options = ["auto", "on", "off"]
-
-    def __init__(self, coordinator: IqTecCoordinator, idx: str, device: str) -> None:
-        """Initialise IQtec OnOffAuto.."""
-        super().__init__(coordinator, idx)
-        self._device_idx = device
-        self._val_idx = idx.split(".")[1]
-
-        self.entity_registry_visible_default = False
-
-        self._attr_device_info = self._default_device_info | DeviceInfo(
-            identifiers={(DOMAIN, device)}, name=f"_{device}"
-        )
+    _source = "switches"
+    _attr_options = list(_ON_OFF_AUTO.values())
 
     @property
-    def name(self) -> str:
-        """Return the entity name."""
-        return self.idx
-
-    @property
-    def extra_state_attributes(self) -> dict[str, str]:
-        """Returns raw iqtec state attributes."""
-        return {}
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        val = self.coordinator.data.devices[self._device_idx].switches[self.idx]
-        match val:
-            case "0":
-                self._attr_current_option = "off"
-            case "1":
-                self._attr_current_option = "on"
-            case "2":
-                self._attr_current_option = "auto"
-        _LOGGER.debug("Updating device: %s", self.idx)
-        self.async_write_ha_state()
+    def current_option(self) -> str | None:
+        """Currently selected option."""
+        return _ON_OFF_AUTO.get(self.raw_value)
 
     async def async_select_option(self, option: str) -> None:
-        """Turn the entity on."""
-        r = (
-            self._hub.devices[self._device_idx]
-            .switch_apis[self.idx]
-            .set_request(option)
-        )
-        self.hass.async_add_executor_job(self._hub.api_call, r)
+        """Select an option."""
+        value = next(key for key, name in _ON_OFF_AUTO.items() if name == option)
+        await self._async_write(value)
