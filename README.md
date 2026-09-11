@@ -65,6 +65,29 @@ data:
 For a drag-and-drop editor, install
 [the calendar card](https://github.com/oberth-effect/iqtec-ha-component).
 
+### Telling a calendar what it really is
+
+`data.xml` types several calendars `TEMPERATURE` even when they drive something
+on or off. The OEM application guesses from the calendar's name, matching Czech
+keywords like *cirkulace* or *zavlaha*; this integration asks instead.
+
+**Settings → Devices & Services → IQtec → Configure** offers a display type per
+calendar. It changes only how the calendar is presented — `levels`,
+`level_names`, the calendar entity's event summaries and what the card draws.
+The controller's own type stays visible as `calendar_type`, and nothing is
+written to the controller.
+
+| Display type | Lanes | Levels shown as          |
+|--------------|-------|--------------------------|
+| `TEMPERATURE`| 3     | Nobody / Night / Day, with setpoints |
+| `VALUE`      | 3     | Nobody / Night / Day     |
+| `BLIND`      | 3     | Down / Tilted / Up       |
+| `ON_OFF`, `ON_OFF2` | 2 | Off / On              |
+
+A calendar always *stores* three levels, so when one is shown as two, Night is
+drawn together with Off, exactly as the controller's `OutNobody`, `OutNight` and
+`OutDay` outputs behave.
+
 ### Schedules as Home Assistant calendars
 
 Each schedule also appears as a `calendar` entity, so it can drive automations:
