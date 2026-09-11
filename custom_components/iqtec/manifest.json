@@ -1,7 +1,7 @@
 {
   "domain": "iqtec",
   "name": "IQtec Smart Home",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "codeowners": [
     "@oberth-effect"
   ],
@@ -12,6 +12,6 @@
   "issue_tracker": "https://github.com/oberth-effect/iqtec-ha-integration/issues",
   "quality_scale": "bronze",
   "requirements": [
-    "piqtec==0.3.0"
+    "piqtec==0.4.0"
   ]
 }
