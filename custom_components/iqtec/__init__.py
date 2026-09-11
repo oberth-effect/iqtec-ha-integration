@@ -11,8 +11,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 
+from .calendar_schedule import async_register_services
 from .const import CONF_CORRECTION_TIMEOUT, CONF_COVER_USE_SHORT_TILT, DEFAULT_CORRECTION_TIMEOUT, DOMAIN
-from .coordinator import IqTecConfigEntry, IqTecCoordinator, IQTecData
+from .coordinator import IqTecCalendarCoordinator, IqTecConfigEntry, IqTecCoordinator, IQTecData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,11 +52,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: IqTecConfigEntry) -> boo
     coordinator = IqTecCoordinator(hass, entry, hub)
     await coordinator.async_config_entry_first_refresh()
 
+    calendars = IqTecCalendarCoordinator(hass, entry, hub)
+    await calendars.async_config_entry_first_refresh()
+
     entry.runtime_data = IQTecData(
         coordinator=coordinator,
+        calendars=calendars,
         cover_use_short_tilt=entry.data.get(CONF_COVER_USE_SHORT_TILT, False),
         correction_time=entry.data.get(CONF_CORRECTION_TIMEOUT, DEFAULT_CORRECTION_TIMEOUT),
     )
+    async_register_services(hass)
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
     return True

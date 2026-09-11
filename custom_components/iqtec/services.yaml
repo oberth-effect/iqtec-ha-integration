@@ -1,0 +1,21 @@
+set_calendar:
+  fields:
+    calendar_id:
+      required: true
+      example: sensor.calendar_0
+      selector:
+        entity:
+          integration: iqtec
+          domain: sensor
+    name:
+      example: Weekdays
+      selector:
+        text:
+    temperatures:
+      example: "[14, 17, 20, 27, 25, 22]"
+      selector:
+        object:
+    days:
+      example: '[{"transitions": [[0, 1], [72, 2], [240, 1]], "as_monday": false}]'
+      selector:
+        object:

@@ -6,6 +6,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .calendar_schedule import IqTecCalendarSensor
 from .coordinator import IqTecConfigEntry
 from .entity import IqTecVariableEntity
 
@@ -22,7 +23,8 @@ async def async_setup_entry(
     """Set up sensor entries."""
     coordinator = config_entry.runtime_data.coordinator
 
-    sensors: list[IqTecSensor] = []
+    sensors: list[SensorEntity] = []
+    sensors.extend(IqTecCalendarSensor(config_entry.runtime_data.calendars, idx) for idx in coordinator.hub.calendars)
     for device_idx, device in coordinator.hub.devices.items():
         for idx, api in device.sensor_apis.items():
             if api.typ in {"Temperature", "Humidity"}:
