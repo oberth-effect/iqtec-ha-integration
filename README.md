@@ -28,9 +28,47 @@ This custom HA integration uses the [`piqtec`](https://github.com/oberth-effect/
 Discovered variables are numerous and largely duplicated across a typical setup, so they are **disabled by default**.
 Enable the ones you need from the device page. Entities already enabled from an earlier version keep their state.
 
+## Calendars
+
+Every heating calendar is exposed as a sensor whose state is the calendar name
+and whose attributes carry the whole schedule:
+
+```yaml
+calendar_type: TEMPERATURE      # or BLIND, ON_OFF, VALUE, ON_OFF2
+levels: 3                       # 2 for the ON_OFF types
+temperatures: [14, 17, 20, 27, 25, 22]
+days:
+  - name: monday
+    as_monday: false
+    transitions: [[0, 1], [72, 2], [119, 1], [182, 2], [240, 1]]
+```
+
+A transition is `[time, level]`, where time counts 5 minute steps from midnight
+(0-287) and level is `0` Nobody, `1` Night or `2` Day. The first transition of a
+day is pinned to midnight and a day holds at most 7.
+
+Write them back with the `iqtec.set_calendar` action. Every field is optional
+except the calendar itself, so a rename does not have to resend the schedule:
+
+```yaml
+action: iqtec.set_calendar
+data:
+  calendar_id: sensor.calendar_0
+  name: Weekdays
+  temperatures: [14, 17, 21, 27, 25, 22]
+  days:
+    - transitions: [[0, 1], [72, 2], [240, 1]]
+      as_monday: false
+    # ... eight days in all, Monday first, "day 8" last
+```
+
+For a drag-and-drop editor, install
+[the calendar card](https://github.com/oberth-effect/iqtec-ha-component).
+
 ## Data updates
 
-The controller is polled every 15 seconds over its local HTTP interface. A command sent from Home Assistant requests an
+The controller is polled every 15 seconds over its local HTTP interface, and
+calendars every 5 minutes because only an editor changes them. A command sent from Home Assistant requests an
 immediate refresh, so the UI does not wait for the next poll.
 
 The controller's request and reply buffers are small and overflow silently; `piqtec` batches the whole house into as few
