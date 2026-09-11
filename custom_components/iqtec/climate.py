@@ -1,31 +1,32 @@
 """IQTec Climate."""
 
+from __future__ import annotations
+
 import logging
 from typing import Any
 
-from piqtec.constants import ROOM_CORR_MODES, ROOM_MODES
-from piqtec.unit.room import RoomState
+from piqtec import RoomCorrectionMode, RoomMode, RoomState
 
 from homeassistant.components.climate import (
     ATTR_TEMPERATURE,
     PRESET_AWAY,
-    PRESET_NONE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
 from .coordinator import IqTecConfigEntry, IqTecCoordinator
-from .entity import IqTecEntity
+from .entity import IqTecUnitEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+PARALLEL_UPDATES = 0
 
 PRESET_ANTIFREEZE = "Anti-Freeze"
 
@@ -35,75 +36,61 @@ async def async_setup_entry(
     config_entry: IqTecConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Setup Cover entries."""
+    """Set up climate entries."""
     coordinator = config_entry.runtime_data.coordinator
-    raw_cals = await hass.async_add_executor_job(coordinator.hub.get_calendar_names)
-    calendars = {
-        int(idx.removeprefix("_CALENDAR_")): calname for idx, calname in raw_cals
-    }
+    raw_calendars = await hass.async_add_executor_job(coordinator.hub.get_calendar_names)
+    calendars = {int(idx.removeprefix("_CALENDAR_")): name or idx for idx, name in raw_calendars}
     async_add_entities(
-        IqTecClimate(
-            coordinator, idx, calendars, config_entry.runtime_data.correction_time
-        )
+        IqTecClimate(coordinator, idx, calendars, config_entry.runtime_data.correction_time)
         for idx in coordinator.hub.rooms
     )
 
 
-class IqTecClimate(IqTecEntity, ClimateEntity):
+class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
     """IQtec Climate Entity."""
 
-    iqtec_state: RoomState
-    _calendars: dict[int, str]
-
-    supported_features = (
-        ClimateEntityFeature.PRESET_MODE | ClimateEntityFeature.TARGET_TEMPERATURE
-    )
-
-    hvac_modes = [
-        HVACMode.OFF,
-        HVACMode.HEAT,
-        HVACMode.AUTO,
-    ]
-
-    precision = 0.1
-
-    target_temperature_step = 0.1
-
-    temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_supported_features = ClimateEntityFeature.PRESET_MODE | ClimateEntityFeature.TARGET_TEMPERATURE
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.AUTO]
+    _attr_precision = 0.1
+    _attr_target_temperature_step = 0.1
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS
 
     def __init__(
         self,
         coordinator: IqTecCoordinator,
         idx: str,
         calendars: dict[int, str],
-        manaul_time: int,
+        manual_time: int,
     ) -> None:
         """Initialise IQtec Climate."""
         super().__init__(coordinator, idx)
-        self.iqtec_state = coordinator.data.rooms[self.idx]
-
-        self._attr_device_info = self._default_device_info | DeviceInfo(
-            identifiers={(DOMAIN, idx)}, name=self.iqtec_state.name
+        self._calendars = {number: f"({number}) {name}" for number, name in calendars.items()}
+        self.manual_time = manual_time
+        self._attr_device_info = DeviceInfo(
+            manufacturer="IQtec/Kobra",
+            identifiers={(DOMAIN, idx)},
+            name=self.iqtec_state.name or idx,
         )
-        self._calendars = {idx: f"({idx}) {n}" for idx, n in calendars.items()}
-        self.manual_time = manaul_time
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self.iqtec_state = self.coordinator.data.rooms[self.idx]
-        _LOGGER.debug("Updating device: %s", self.idx)
-        self.async_write_ha_state()
-
-    # @property
-    # def supported_features(self) -> ClimateEntityFeature:
-    #     """Supported features."""
-    #     return self._base_feautres
 
     @property
-    def current_temperature(self) -> float:
+    def iqtec_state(self) -> RoomState:
+        """Current room state."""
+        return self.coordinator.data.rooms[self.idx]
+
+    @property
+    def _room(self):
+        return self._hub.rooms[self.idx]
+
+    @property
+    def current_temperature(self) -> float | None:
         """Current temperature."""
         return self.iqtec_state.actual_temperature
+
+    @property
+    def current_humidity(self) -> int | None:
+        """Current humidity."""
+        humidity = self.iqtec_state.humidity
+        return None if humidity is None else round(humidity)
 
     @property
     def hvac_action(self) -> HVACAction:
@@ -119,102 +106,63 @@ class IqTecClimate(IqTecEntity, ClimateEntity):
             return HVACMode.OFF
 
         match self.iqtec_state.room_mode:
-            case ROOM_MODES.OFF:
+            case RoomMode.OFF:
                 return HVACMode.OFF
-            case ROOM_MODES.CALENDAR:
-                if self.iqtec_state.correction_status == ROOM_CORR_MODES.MANUAL:
+            case RoomMode.CALENDAR:
+                if self.iqtec_state.correction_status == RoomCorrectionMode.MANUAL:
                     return HVACMode.HEAT
                 return HVACMode.AUTO
             case _:
                 return HVACMode.AUTO
 
     @property
-    def preset_mode(self) -> str:
+    def preset_mode(self) -> str | None:
         """Current Preset Mode."""
         match self.iqtec_state.room_mode:
-            case ROOM_MODES.ANTIFREEZE:
+            case RoomMode.ANTIFREEZE:
                 return PRESET_ANTIFREEZE
-            case ROOM_MODES.HOLIDAY:
+            case RoomMode.HOLIDAY:
                 return PRESET_AWAY
             case _:
-                return self._calendars.get(
-                    self.iqtec_state.calendar_number,
-                )
+                return self._calendars.get(self.iqtec_state.calendar_number)
 
     @property
     def preset_modes(self) -> list[str]:
         """Preset Modes List."""
-        return [
-            *self._calendars.values(),
-            PRESET_AWAY,
-            PRESET_ANTIFREEZE,
-            PRESET_NONE,
-        ]
+        return [*self._calendars.values(), PRESET_AWAY, PRESET_ANTIFREEZE]
 
     @property
     def target_temperature(self) -> float | None:
         """Current target temperature."""
-        if type(self.iqtec_state.requested_temperature) is float:
-            return self.iqtec_state.requested_temperature
-        return None
+        return self.iqtec_state.requested_temperature
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         match hvac_mode:
             case HVACMode.OFF:
-                self.hass.async_add_executor_job(
-                    self._hub.rooms[self.idx].set_room_mode, ROOM_MODES.OFF
-                )
+                await self._async_command(self._room.set_room_mode, RoomMode.OFF)
             case HVACMode.HEAT:
-                self.hass.async_add_executor_job(
-                    self._hub.rooms[self.idx].set_room_mode, ROOM_MODES.CALENDAR
-                )
-                self.hass.async_add_executor_job(
-                    self._hub.rooms[self.idx].set_correction_mode,
-                    ROOM_CORR_MODES.MANUAL,
-                )
+                await self._async_command(self._room.set_room_mode, RoomMode.CALENDAR)
+                await self._async_command(self._room.set_correction_mode, RoomCorrectionMode.MANUAL)
             case HVACMode.AUTO:
-                self.hass.async_add_executor_job(
-                    self._hub.rooms[self.idx].set_room_mode, ROOM_MODES.CALENDAR
-                )
-                self.hass.async_add_executor_job(
-                    self._hub.rooms[self.idx].set_correction_mode,
-                    ROOM_CORR_MODES.NONE,
-                )
+                await self._async_command(self._room.set_room_mode, RoomMode.CALENDAR)
+                await self._async_command(self._room.set_correction_mode, RoomCorrectionMode.NONE)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new target preset mode."""
-        cal_inv = {v: k for k, v in self._calendars.items()}
         if preset_mode == PRESET_AWAY:
-            self.hass.async_add_executor_job(
-                self._hub.rooms[self.idx].set_room_mode, ROOM_MODES.HOLIDAY
-            )
+            await self._async_command(self._room.set_room_mode, RoomMode.HOLIDAY)
         elif preset_mode == PRESET_ANTIFREEZE:
-            self.hass.async_add_executor_job(
-                self._hub.rooms[self.idx].set_room_mode, ROOM_MODES.ANTIFREEZE
-            )
-        elif preset_mode == PRESET_NONE:
-            pass
+            await self._async_command(self._room.set_room_mode, RoomMode.ANTIFREEZE)
         else:
-            self.hass.async_add_executor_job(
-                self._hub.rooms[self.idx].set_room_mode, ROOM_MODES.CALENDAR
-            )
-            self.hass.async_add_executor_job(
-                self._hub.rooms[self.idx].set_calendar, cal_inv[preset_mode]
-            )
+            calendars = {name: number for number, name in self._calendars.items()}
+            if preset_mode not in calendars:
+                _LOGGER.warning("Unknown preset %s for %s", preset_mode, self.idx)
+                return
+            await self._async_command(self._room.set_room_mode, RoomMode.CALENDAR)
+            await self._async_command(self._room.set_calendar, calendars[preset_mode])
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
-        temp = kwargs[ATTR_TEMPERATURE]
-        self.hass.async_add_executor_job(
-            self._hub.rooms[self.idx].set_correction_mode,
-            ROOM_CORR_MODES.MANUAL,
-        )
-        self.hass.async_add_executor_job(
-            self._hub.rooms[self.idx].set_correction_time,
-            self.manual_time,
-        )
-        self.hass.async_add_executor_job(
-            self._hub.rooms[self.idx].set_correction_temperature,
-            temp,
-        )
+        temperature = kwargs[ATTR_TEMPERATURE]
+        await self._async_command(self._room.set_manual_temperature, temperature, self.manual_time)
