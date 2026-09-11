@@ -134,6 +134,13 @@ requests as those limits allow (five on a medium-sized installation).
 Delete the integration from **Settings → Devices & Services**, then remove `custom_components/iqtec` (or uninstall it
 from HACS).
 
+## Versioning
+
+This integration and [`piqtec`](https://github.com/oberth-effect/piqtec) share a
+version number, and `manifest.json` pins the matching release exactly. A release
+of one is a release of both, even when only one of them changed, so the version
+you see in Home Assistant always names the library it was built against.
+
 ## Development
 
 ```shell
