@@ -5,13 +5,17 @@
         "data": {
           "host": "[%key:common::config_flow::data::host%]",
           "cover_use_short_tilt": "Covers use short tilt to open",
-          "correction_timeout": "Manual Climate Timout (5 min intervals) [default=24 (2 hours)]"
+          "correction_timeout": "Manual climate timeout (5 minute intervals)"
+        },
+        "data_description": {
+          "host": "Hostname or IP address of the IQtec controller, optionally with a port.",
+          "cover_use_short_tilt": "Use the short tilt command instead of the full tilt cycle when opening a blind's slats.",
+          "correction_timeout": "How long a manually set temperature is held, in 5 minute intervals. 24 is two hours."
         }
       }
     },
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
-      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
       "unknown": "[%key:common::config_flow::error::unknown%]"
     },
     "abort": {

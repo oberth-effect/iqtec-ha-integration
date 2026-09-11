@@ -1,19 +1,17 @@
 {
   "domain": "iqtec",
   "name": "IQtec Smart Home",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "codeowners": [
     "@oberth-effect"
   ],
   "config_flow": true,
-  "dependencies": [],
-  "documentation": "https://www.home-assistant.io/integrations/iqtec",
-  "homekit": {},
+  "documentation": "https://github.com/oberth-effect/iqtec-ha-integration",
+  "integration_type": "hub",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/oberth-effect/iqtec-ha-integration/issues",
   "quality_scale": "bronze",
   "requirements": [
-    "piqtec==0.1.5"
-  ],
-  "ssdp": [],
-  "zeroconf": []
+    "piqtec==0.2.0"
+  ]
 }
