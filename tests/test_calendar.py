@@ -10,11 +10,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.iqtec.const import (
     CONF_CORRECTION_TIMEOUT,
     CONF_COVER_USE_SHORT_TILT,
+    CONF_DISPLAY_TYPES,
     DOMAIN,
     SERVICE_SET_CALENDAR,
 )
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.util import dt as dt_util
 
@@ -183,3 +185,70 @@ async def test_schedule_calendar_is_read_only(hass: HomeAssistant, mock_controll
 
     state = hass.states.get(CALENDAR_ENTITY)
     assert not state.attributes.get("supported_features")
+
+
+async def test_display_type_defaults_to_the_controller(hass: HomeAssistant, mock_controller) -> None:
+    """Without an override, a calendar is shown as the controller types it."""
+    await setup_entry(hass)
+
+    attributes = hass.states.get(ENTITY).attributes
+    assert attributes["calendar_type"] == "TEMPERATURE"
+    assert attributes["display_type"] == "TEMPERATURE"
+    assert attributes["levels"] == 3
+    assert attributes["level_names"] == ["Nobody", "Night", "Day"]
+
+
+async def test_display_type_override_changes_levels_and_names(hass: HomeAssistant, mock_controller) -> None:
+    """A mistyped calendar can be shown as the on/off schedule it really is."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=ENTRY_DATA,
+        options={CONF_DISPLAY_TYPES: {"_CALENDAR_00": "ON_OFF"}},
+        unique_id="iqtec_platform_iqtec.home",
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    attributes = hass.states.get(ENTITY).attributes
+    # What the controller says is kept; what it is shown as is the override.
+    assert attributes["calendar_type"] == "TEMPERATURE"
+    assert attributes["display_type"] == "ON_OFF"
+    assert attributes["levels"] == 2
+    assert attributes["level_names"] == ["Off", "Off", "On"]
+
+    # The calendar entity follows the override too.
+    calendar = hass.states.get(CALENDAR_ENTITY)
+    assert calendar.attributes["message"] in ("On", "Off")
+
+
+async def test_unknown_display_type_falls_back(hass: HomeAssistant, mock_controller) -> None:
+    """A stale or misspelt override does not break the entity."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=ENTRY_DATA,
+        options={CONF_DISPLAY_TYPES: {"_CALENDAR_00": "NONSENSE"}},
+        unique_id="iqtec_platform_iqtec.home",
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(ENTITY).attributes["display_type"] == "TEMPERATURE"
+
+
+async def test_options_flow_offers_every_calendar(hass: HomeAssistant, mock_controller) -> None:
+    """The options flow lists one display type per calendar and stores it."""
+    entry = await setup_entry(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert "calendar_0" in result["data_schema"].schema
+
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"calendar_0": "ON_OFF"})
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_DISPLAY_TYPES] == {"_CALENDAR_00": "ON_OFF"}
+    # Changing the options reloads the entry, so entities pick the change up.
+    assert hass.states.get(ENTITY).attributes["display_type"] == "ON_OFF"
