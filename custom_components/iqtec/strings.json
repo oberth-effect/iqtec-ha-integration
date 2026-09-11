@@ -21,5 +21,29 @@
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
     }
+  },
+  "services": {
+    "set_calendar": {
+      "name": "Set calendar",
+      "description": "Replace an IQtec calendar's schedule, setpoints or name.",
+      "fields": {
+        "calendar_id": {
+          "name": "Calendar",
+          "description": "The calendar entity to write."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New calendar name, at most 16 characters."
+        },
+        "temperatures": {
+          "name": "Setpoints",
+          "description": "Six setpoints: Nobody, Night and Day while heating, then the same three while cooling."
+        },
+        "days": {
+          "name": "Days",
+          "description": "Eight days, Monday first and 'day 8' last. Each is {transitions: [[time, level], ...], as_monday: bool}, where time counts 5 minute steps from midnight (0-287) and level is 0 Nobody, 1 Night or 2 Day."
+        }
+      }
+    }
   }
 }

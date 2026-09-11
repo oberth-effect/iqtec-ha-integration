@@ -7,7 +7,7 @@ rules:
   config-flow-test-coverage: done
   config-flow: done
   dependency-transparency: done
-  docs-actions: todo
+  docs-actions: done
   docs-high-level-description: todo
   docs-installation-instructions: todo
   docs-removal-instructions: todo
@@ -20,7 +20,7 @@ rules:
   unique-config-entry: done
 
   # Silver
-  action-exceptions: todo
+  action-exceptions: done
   config-entry-unloading: done
   docs-configuration-parameters: todo
   docs-installation-parameters: todo

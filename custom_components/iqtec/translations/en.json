@@ -21,5 +21,29 @@
         }
       }
     }
+  },
+  "services": {
+    "set_calendar": {
+      "description": "Replace an IQtec calendar's schedule, setpoints or name.",
+      "fields": {
+        "calendar_id": {
+          "description": "The calendar entity to write.",
+          "name": "Calendar"
+        },
+        "days": {
+          "description": "Eight days, Monday first and 'day 8' last. Each is {transitions: [[time, level], ...], as_monday: bool}, where time counts 5 minute steps from midnight (0-287) and level is 0 Nobody, 1 Night or 2 Day.",
+          "name": "Days"
+        },
+        "name": {
+          "description": "New calendar name, at most 16 characters.",
+          "name": "Name"
+        },
+        "temperatures": {
+          "description": "Six setpoints: Nobody, Night and Day while heating, then the same three while cooling.",
+          "name": "Setpoints"
+        }
+      },
+      "name": "Set calendar"
+    }
   }
 }
