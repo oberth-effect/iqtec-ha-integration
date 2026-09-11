@@ -65,6 +65,31 @@ data:
 For a drag-and-drop editor, install
 [the calendar card](https://github.com/oberth-effect/iqtec-ha-component).
 
+### Schedules as Home Assistant calendars
+
+Each schedule also appears as a `calendar` entity, so it can drive automations:
+
+```yaml
+triggers:
+  - trigger: calendar
+    entity_id: calendar.generalprofile
+    event: start
+    offset: "-00:30:00"       # half an hour before a period begins
+conditions:
+  - condition: template
+    value_template: "{{ trigger.calendar_event.summary.startswith('Day') }}"
+```
+
+Events run back to back, one per level period, summarised as `Day · 20.0 °C`.
+`calendar.get_events` reads any window, and days marked "follows Monday" are
+resolved for you. "Day 8" has no place on a calendar, since the controller
+selects it through an input rather than a date, so it is left out.
+
+These calendars are **read-only, and show what is programmed rather than what is
+happening**: holiday mode, a room switched off and a manual correction all
+override the schedule without changing it. Editing goes through
+`iqtec.set_calendar` or the card.
+
 ## Data updates
 
 The controller is polled every 15 seconds over its local HTTP interface, and
