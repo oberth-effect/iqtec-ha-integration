@@ -1,5 +1,7 @@
 """Tests for the request monitor that counts HTTP traffic and failures."""
 
+import threading
+import time
 from unittest.mock import patch
 
 import pytest
@@ -101,6 +103,74 @@ def test_poll_bookkeeping_tracks_runs_of_failures():
     assert stats.last_error == "ValueError: again"
 
 
+def test_polls_and_commands_take_turns_on_the_controller():
+    monitor = RequestMonitor()
+    started, release = threading.Event(), threading.Event()
+    order: list[str] = []
+
+    def slow_poll() -> None:
+        order.append("poll start")
+        started.set()
+        release.wait(2)
+        order.append("poll end")
+
+    record = PollRecord()
+    poll = threading.Thread(target=monitor.run, args=(record, slow_poll))
+    poll.start()
+    assert started.wait(2)
+
+    command = threading.Thread(target=monitor.exclusive, args=(lambda: order.append("command"),))
+    command.start()
+    time.sleep(0.05)
+    assert order == ["poll start"], "the command must wait for the poll"
+
+    release.set()
+    poll.join(2)
+    command.join(2)
+    assert order == ["poll start", "poll end", "command"]
+    assert record.waited == 0
+    assert monitor.stats.waits == 1
+
+
+def test_a_poll_that_waits_records_the_wait():
+    monitor = RequestMonitor()
+    holding, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        holding.set()
+        release.wait(2)
+
+    command = threading.Thread(target=monitor.exclusive, args=(hold,))
+    command.start()
+    assert holding.wait(2)
+
+    record = PollRecord()
+    poll = threading.Thread(target=monitor.run, args=(record, lambda: None))
+    poll.start()
+    time.sleep(0.05)
+    release.set()
+    poll.join(2)
+    command.join(2)
+
+    assert record.waited >= 0.04
+    assert record.duration < record.waited
+    assert monitor.stats.waits == 1
+
+
+def test_the_lock_is_released_when_the_call_raises():
+    monitor = RequestMonitor()
+
+    def boom() -> None:
+        raise RuntimeError("x")
+
+    with pytest.raises(RuntimeError):
+        monitor.run(PollRecord(), boom)
+    with pytest.raises(RuntimeError):
+        monitor.exclusive(boom)
+    # A further call must not block.
+    assert monitor.exclusive(lambda: "free") == "free"
+
+
 def test_stats_serialise_for_diagnostics():
     monitor = RequestMonitor()
     monitor.poll_finished(RuntimeError("x"))
@@ -112,4 +182,11 @@ def test_stats_serialise_for_diagnostics():
     assert as_dict["last_error"] == "RuntimeError: x"
     assert isinstance(as_dict["last_error_at"], str)
     assert as_dict["last_success_at"] is None
-    assert as_dict["last_poll"] == {"requests": 3, "bytes_received": 1200, "errors": 0, "duration": 0.432}
+    assert as_dict["waits"] == 0
+    assert as_dict["last_poll"] == {
+        "requests": 3,
+        "bytes_received": 1200,
+        "errors": 0,
+        "duration": 0.432,
+        "waited": 0.0,
+    }

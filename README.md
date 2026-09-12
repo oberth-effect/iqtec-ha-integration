@@ -133,7 +133,8 @@ many variables that stay disabled cost the controller nothing. Enabling an entit
 (Home Assistant reloads the integration briefly when you do) and disabling it takes the variable out again.
 
 The controller's request and reply buffers are small and overflow silently; `piqtec` batches each poll into as few
-requests as those limits allow.
+requests as those limits allow. Polls, calendar reads and commands take turns, so the controller never sees two
+requests from Home Assistant at once; the Poll duration sensor reports how long the last poll waited for its turn.
 
 ### Monitoring the controller
 
@@ -143,7 +144,7 @@ controller itself cannot be reached:
 | Sensor         | Meaning                                                                                        |
 |----------------|------------------------------------------------------------------------------------------------|
 | Poll requests  | HTTP requests the last poll needed, with the bytes received as an attribute.                    |
-| Poll duration  | How long the last poll took.                                                                   |
+| Poll duration  | How long the last poll took, and as attributes how long it waited for its turn and how often anything had to wait. |
 | Requests       | HTTP requests since the integration was loaded.                                                |
 | Request errors | Requests that failed at the HTTP level, split into timeouts and connection errors in attributes. |
 | Failed polls   | Polls that did not complete, with the current run of consecutive failures as an attribute.      |
@@ -170,7 +171,7 @@ This integration and [`piqtec`](https://github.com/oberth-effect/piqtec) share a
 version number, and `manifest.json` pins the matching release exactly. A release
 of one is a release of both, even when only one of them changed, so the version
 you see in Home Assistant always names the library it was built against. A patch
-release of the integration alone, such as 0.6.1, keeps the pin on the matching
+release of the integration alone, such as 0.6.2, keeps the pin on the matching
 piqtec minor release.
 
 ## Development

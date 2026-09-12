@@ -224,7 +224,7 @@ async def _async_set_calendar(hass: HomeAssistant, call: ServiceCall) -> None:
         state.days = days
 
     try:
-        await hass.async_add_executor_job(coordinator.hub.write_calendar, idx, state)
+        await hass.async_add_executor_job(coordinator.monitor.exclusive, coordinator.hub.write_calendar, idx, state)
     except IQtecError as err:
         raise HomeAssistantError(f"Could not save calendar {idx}: {err}") from err
 

@@ -102,6 +102,7 @@ STATS_SENSORS: tuple[IqTecStatsDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
         value_fn=lambda stats: round(stats.last_poll.duration, 3),
+        attributes_fn=lambda stats: {"waited": round(stats.last_poll.waited, 3), "waits": stats.waits},
     ),
     IqTecStatsDescription(
         key="requests",

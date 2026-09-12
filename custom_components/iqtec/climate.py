@@ -38,7 +38,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up climate entries."""
     coordinator = config_entry.runtime_data.coordinator
-    raw_calendars = await hass.async_add_executor_job(coordinator.hub.get_calendar_names)
+    raw_calendars = await hass.async_add_executor_job(coordinator.monitor.exclusive, coordinator.hub.get_calendar_names)
     calendars = {int(idx.removeprefix("_CALENDAR_")): name or idx for idx, name in raw_calendars}
     async_add_entities(
         IqTecClimate(coordinator, idx, calendars, config_entry.runtime_data.correction_time)

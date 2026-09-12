@@ -6,6 +6,7 @@ from piqtec import IQtecConnectionError
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.iqtec.const import (
+    CALENDAR_SCAN_INTERVAL,
     CONF_CORRECTION_TIMEOUT,
     CONF_COVER_USE_SHORT_TILT,
     DEFAULT_SCAN_INTERVAL,
@@ -122,6 +123,24 @@ async def test_a_device_with_every_variable_enabled_is_read_as_one_structure(
     untrack_speed()
     assert PUMP_OUT_ADDRESS in coordinator.plan().paths
     assert PUMP_ADDRESS not in coordinator.plan().paths
+
+
+async def test_calendar_and_update_polls_do_not_overlap(hass: HomeAssistant, mock_controller) -> None:
+    """Both polls fall due in the same tick, yet the controller sees one at a time."""
+    entry = await setup_entry(hass)
+    mock_controller.slow_by = 0.02
+    calls_before = mock_controller.calls
+
+    # Jumping past the calendar interval fires the 15 s poll and the 5 min
+    # calendar poll together, each in its own executor thread.
+    await poll(hass, seconds=int(CALENDAR_SCAN_INTERVAL.total_seconds()) + 1)
+
+    assert mock_controller.calls >= calls_before + 2, "both polls must have run"
+    assert mock_controller.max_concurrent == 1
+
+    duration = hass.states.get(stats_entity(hass, entry, "poll_duration"))
+    assert duration.attributes["waits"] >= 0
+    assert duration.attributes["waited"] >= 0
 
 
 async def test_read_failures_are_counted_and_reported(hass: HomeAssistant, mock_controller) -> None:

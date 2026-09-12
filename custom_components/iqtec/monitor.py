@@ -27,6 +27,7 @@ class PollRecord:
     bytes_received: int = 0
     errors: int = 0
     duration: float = 0.0
+    waited: float = 0.0
 
 
 @dataclass
@@ -38,6 +39,7 @@ class RequestStats:
     errors: int = 0
     timeouts: int = 0
     connection_errors: int = 0
+    waits: int = 0
 
     polls: int = 0
     failed_polls: int = 0
@@ -56,6 +58,7 @@ class RequestStats:
             "errors": self.errors,
             "timeouts": self.timeouts,
             "connection_errors": self.connection_errors,
+            "waits": self.waits,
             "polls": self.polls,
             "failed_polls": self.failed_polls,
             "consecutive_failures": self.consecutive_failures,
@@ -67,31 +70,50 @@ class RequestStats:
                 "bytes_received": self.last_poll.bytes_received,
                 "errors": self.last_poll.errors,
                 "duration": round(self.last_poll.duration, 3),
+                "waited": round(self.last_poll.waited, 3),
             },
         }
 
 
 class RequestMonitor:
-    """Attributes HTTP requests to the poll that caused them.
+    """Gateway for every conversation with the controller.
 
     ``run`` executes a blocking piqtec call in the current (executor) thread and
     notes the poll in thread-local storage, so the adapter can charge requests
-    made from that thread to the right ``PollRecord``. Requests made outside a
-    poll, such as commands, only reach the running totals.
+    made from that thread to the right ``PollRecord``. ``exclusive`` does the
+    same for commands, which only reach the running totals.
+
+    Both hold one lock, so the room poll, the calendar poll and commands take
+    turns and the controller never sees two requests from here at once.
     """
 
     def __init__(self) -> None:
         """Start with empty counters."""
         self.stats = RequestStats()
         self._local = threading.local()
+        self._lock = threading.Lock()
 
     def install(self, session: requests.Session) -> None:
         """Route the session's traffic through a counting adapter."""
         for prefix in ("http://", "https://"):
             session.mount(prefix, _CountingAdapter(self))
 
+    def _acquire(self) -> float:
+        """Wait for the controller to be free; returns how long that took."""
+        if self._lock.acquire(blocking=False):
+            return 0.0
+        started = time.monotonic()
+        self._lock.acquire()
+        self.stats.waits += 1
+        return time.monotonic() - started
+
     def run[T](self, record: PollRecord, func: Callable[..., T], *args: Any) -> T:
-        """Call ``func`` and charge its requests and duration to ``record``."""
+        """Call ``func`` alone on the controller, charging its requests to ``record``.
+
+        ``record.duration`` covers the call itself; time spent waiting for a
+        previous poll or command to finish is reported in ``record.waited``.
+        """
+        record.waited = self._acquire()
         self._local.record = record
         started = time.monotonic()
         try:
@@ -99,6 +121,15 @@ class RequestMonitor:
         finally:
             record.duration = time.monotonic() - started
             self._local.record = None
+            self._lock.release()
+
+    def exclusive[T](self, func: Callable[..., T], *args: Any) -> T:
+        """Call the controller outside a poll, once any running poll has finished."""
+        self._acquire()
+        try:
+            return func(*args)
+        finally:
+            self._lock.release()
 
     def poll_finished(self, error: BaseException | None) -> None:
         """Book a completed poll; ``error`` is what made it fail, if anything."""

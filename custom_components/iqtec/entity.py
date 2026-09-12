@@ -26,7 +26,7 @@ class IqTecEntity(CoordinatorEntity[IqTecCoordinator]):
 
     async def _async_command(self, func, *args: Any) -> None:
         """Run a blocking controller command, then refresh."""
-        await self.hass.async_add_executor_job(func, *args)
+        await self.hass.async_add_executor_job(self.coordinator.monitor.exclusive, func, *args)
         await self.coordinator.async_request_refresh()
 
 

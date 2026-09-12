@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 from piqtec import CalendarState, State, SystemState
@@ -92,6 +95,13 @@ class FakeController:
         self.fail_with: Exception | None = None
         self._calendars = calendars
         self._session = requests.Session()
+        # Concurrency bookkeeping: how many callers are talking to the
+        # controller right now, and the most there ever were at once.
+        self.slow_by = 0.0
+        self.calls = 0
+        self.max_concurrent = 0
+        self._active = 0
+        self._active_lock = threading.Lock()
 
         self.rooms = {"R1": Room(self, "R1", APIS)}
         self.sunblinds = {"R1_SUNBLIND_1": Sunblind(self, "R1_SUNBLIND_1", APIS)}
@@ -112,7 +122,25 @@ class FakeController:
         """Addresses asked for by the most recent request set."""
         return [getter.path for getter in self.requests[-1].getters]
 
+    @contextmanager
+    def _talking(self):
+        with self._active_lock:
+            self._active += 1
+            self.calls += 1
+            self.max_concurrent = max(self.max_concurrent, self._active)
+        try:
+            if self.slow_by:
+                time.sleep(self.slow_by)
+            yield
+        finally:
+            with self._active_lock:
+                self._active -= 1
+
     def api_call(self, request_set: RequestSet) -> ResponseSet:
+        with self._talking():
+            return self._api_call(request_set)
+
+    def _api_call(self, request_set: RequestSet) -> ResponseSet:
         self.requests.append(request_set)
         if self.fail_with is not None:
             raise self.fail_with
@@ -140,9 +168,10 @@ class FakeController:
         )
 
     def read_calendars(self) -> dict[str, CalendarState]:
-        if self.fail_with is not None:
-            raise self.fail_with
-        return self._calendars
+        with self._talking():
+            if self.fail_with is not None:
+                raise self.fail_with
+            return self._calendars
 
     def get_calendar_names(self) -> list[tuple[str, str | None]]:
         return [(idx, state.name) for idx, state in self.read_calendars().items()]
