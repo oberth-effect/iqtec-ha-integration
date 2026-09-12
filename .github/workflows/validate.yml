@@ -14,6 +14,9 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # The domain is not in home-assistant/brands, which is expected of
+          # a custom integration that is not in the HACS default store.
+          ignore: brands
 
   tests:
     runs-on: ubuntu-latest
