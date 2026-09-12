@@ -245,7 +245,7 @@ async def test_options_flow_offers_every_calendar(hass: HomeAssistant, mock_cont
     assert result["type"] is FlowResultType.FORM
     assert "calendar_0" in result["data_schema"].schema
 
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {"calendar_0": "ON_OFF"})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"calendar_0": "on_off"})
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY

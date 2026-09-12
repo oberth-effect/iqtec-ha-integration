@@ -102,20 +102,22 @@ class IQTecOptionsFlow(OptionsFlow):
         keys = {f"calendar_{hub_calendars[idx].index}": idx for idx in calendars}
 
         if user_input is not None:
-            chosen = {keys[key]: value for key, value in user_input.items() if key in keys}
+            # The form speaks lowercase; the option keeps the CalendarType value.
+            chosen = {keys[key]: value.upper() for key, value in user_input.items() if key in keys}
             return self.async_create_entry(data={**self.config_entry.options, CONF_DISPLAY_TYPES: chosen})
 
         current = self.config_entry.options.get(CONF_DISPLAY_TYPES) or {}
+        # Selector options double as translation keys, which must be lowercase.
         selector = SelectSelector(
             SelectSelectorConfig(
-                options=[t.value for t in CalendarType],
+                options=[t.value.lower() for t in CalendarType],
                 mode=SelectSelectorMode.DROPDOWN,
                 translation_key="display_type",
             )
         )
         schema = vol.Schema(
             {
-                vol.Required(key, default=current.get(idx) or str(calendars[idx].calendar_type)): selector
+                vol.Required(key, default=(current.get(idx) or str(calendars[idx].calendar_type)).lower()): selector
                 for key, idx in keys.items()
             }
         )

@@ -1,7 +1,6 @@
 {
   "domain": "iqtec",
   "name": "IQtec Smart Home",
-  "version": "0.5.0",
   "codeowners": [
     "@oberth-effect"
   ],
@@ -13,5 +12,6 @@
   "quality_scale": "bronze",
   "requirements": [
     "piqtec==0.5.0"
-  ]
+  ],
+  "version": "0.5.0"
 }

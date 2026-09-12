@@ -58,11 +58,11 @@
   "selector": {
     "display_type": {
       "options": {
-        "TEMPERATURE": "Temperature (Nobody / Night / Day)",
-        "BLIND": "Blind (Down / Tilted / Up)",
-        "ON_OFF": "On / Off",
-        "ON_OFF2": "On / Off (alternate)",
-        "VALUE": "Value (Nobody / Night / Day)"
+        "temperature": "Temperature (Nobody / Night / Day)",
+        "blind": "Blind (Down / Tilted / Up)",
+        "on_off": "On / Off",
+        "on_off2": "On / Off (alternate)",
+        "value": "Value (Nobody / Night / Day)"
       }
     }
   }
