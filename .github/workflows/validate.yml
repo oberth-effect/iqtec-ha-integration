@@ -14,9 +14,12 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # The domain is not in home-assistant/brands, which is expected of
-          # a custom integration that is not in the HACS default store.
-          ignore: brands
+          # brands: the domain is not in home-assistant/brands, which is
+          # expected of a custom integration outside the HACS default store.
+          # license: the check needs GitHub to recognise the license and it to
+          # be OSI approved; CC BY-NC-SA 4.0 is neither. Both checks exist for
+          # the default store only.
+          ignore: brands license
 
   tests:
     runs-on: ubuntu-latest
