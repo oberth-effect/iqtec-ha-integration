@@ -25,9 +25,14 @@
   "options": {
     "step": {
       "init": {
-        "data": {},
-        "description": "Some calendars are typed as temperature profiles in the controller even though they drive something on or off. Choose how each should be shown.\n\n{names}",
-        "title": "Calendar display"
+        "data": {
+          "scan_interval": "Scan interval (seconds)"
+        },
+        "data_description": {
+          "scan_interval": "How often rooms, covers and enabled variables are read from the controller. Lower is more responsive, higher is gentler on the controller. Calendars are read every 5 minutes regardless."
+        },
+        "description": "How often the controller is read, and how each calendar should be shown. Some calendars are typed as temperature profiles in the controller even though they drive something on or off.\n\n{names}",
+        "title": "IQtec options"
       }
     }
   },

@@ -19,6 +19,15 @@ This custom HA integration uses the [`piqtec`](https://github.com/oberth-effect/
 | Covers use short tilt to open      | Use the short tilt command instead of the full tilt cycle when opening a blind's slats.               |
 | Manual climate timeout             | How long a manually set temperature is held, in 5 minute intervals (24 = two hours).                  |
 
+### Options
+
+**Settings → Devices & Services → IQtec → Configure** offers:
+
+| Option           | Meaning                                                                                                     |
+|------------------|-------------------------------------------------------------------------------------------------------------|
+| Scan interval    | How often rooms, covers and enabled variables are read, in seconds (default 15, from 5 to 300). Calendars are read every 5 minutes regardless. |
+| Calendar display | How each calendar is shown; see [Telling a calendar what it really is](#telling-a-calendar-what-it-really-is). |
+
 ## Available Platforms
 
 - Climate (currently heating only, cooling not implemented),
@@ -115,12 +124,33 @@ override the schedule without changing it. Editing goes through
 
 ## Data updates
 
-The controller is polled every 15 seconds over its local HTTP interface, and
+The controller is polled over its local HTTP interface every 15 seconds by default (see [Options](#options)), and
 calendars every 5 minutes because only an editor changes them. A command sent from Home Assistant requests an
 immediate refresh, so the UI does not wait for the next poll.
 
-The controller's request and reply buffers are small and overflow silently; `piqtec` batches the whole house into as few
-requests as those limits allow (five on a medium-sized installation).
+Only what an enabled entity needs is read: rooms and covers as whole structures, other variables one by one. The
+many variables that stay disabled cost the controller nothing. Enabling an entity adds its variable to the poll
+(Home Assistant reloads the integration briefly when you do) and disabling it takes the variable out again.
+
+The controller's request and reply buffers are small and overflow silently; `piqtec` batches each poll into as few
+requests as those limits allow.
+
+### Monitoring the controller
+
+The integration's own device carries diagnostic sensors that stay available, and keep counting, while the
+controller itself cannot be reached:
+
+| Sensor         | Meaning                                                                                        |
+|----------------|------------------------------------------------------------------------------------------------|
+| Poll requests  | HTTP requests the last poll needed, with the bytes received as an attribute.                    |
+| Poll duration  | How long the last poll took.                                                                   |
+| Requests       | HTTP requests since the integration was loaded.                                                |
+| Request errors | Requests that failed at the HTTP level, split into timeouts and connection errors in attributes. |
+| Failed polls   | Polls that did not complete, with the current run of consecutive failures as an attribute.      |
+| Last error     | The most recent failure and, as an attribute, when it happened.                                |
+
+**Download diagnostics** on the integration page adds the exact controller addresses being polled, the piqtec
+version and the same counters. Nothing here is written to the controller.
 
 ## Known limitations
 
@@ -139,7 +169,9 @@ from HACS).
 This integration and [`piqtec`](https://github.com/oberth-effect/piqtec) share a
 version number, and `manifest.json` pins the matching release exactly. A release
 of one is a release of both, even when only one of them changed, so the version
-you see in Home Assistant always names the library it was built against.
+you see in Home Assistant always names the library it was built against. A patch
+release of the integration alone, such as 0.6.1, keeps the pin on the matching
+piqtec minor release.
 
 ## Development
 

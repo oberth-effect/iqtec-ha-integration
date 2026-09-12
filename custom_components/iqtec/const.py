@@ -8,7 +8,12 @@ CONF_COVER_USE_SHORT_TILT = "cover_use_short_tilt"
 CONF_CORRECTION_TIMEOUT = "correction_timeout"
 
 DEFAULT_CORRECTION_TIMEOUT = 24
-DEFAULT_SCAN_INTERVAL = timedelta(seconds=15)
+
+# How often the rooms, covers and enabled variables are read, in seconds. The
+# default suits a house; the options flow lets a user trade latency for load.
+DEFAULT_SCAN_INTERVAL = 15
+MIN_SCAN_INTERVAL = 5
+MAX_SCAN_INTERVAL = 300
 # Calendars only change when somebody edits them.
 CALENDAR_SCAN_INTERVAL = timedelta(minutes=5)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from piqtec import Controller, IQtecError
+import requests
 
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
@@ -14,6 +15,7 @@ from homeassistant.helpers import entity_registry as er
 from .calendar_schedule import async_register_services
 from .const import CONF_CORRECTION_TIMEOUT, CONF_COVER_USE_SHORT_TILT, DEFAULT_CORRECTION_TIMEOUT, DOMAIN
 from .coordinator import IqTecCalendarCoordinator, IqTecConfigEntry, IqTecCoordinator, IQTecData
+from .monitor import RequestMonitor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,36 +43,56 @@ async def _async_migrate_unique_ids(hass: HomeAssistant, entry: IqTecConfigEntry
     await er.async_migrate_entries(hass, entry.entry_id, migrate)
 
 
+def _monitor_traffic(hub: Controller) -> RequestMonitor:
+    """Count the requests piqtec makes on the HTTP session of the hub.
+
+    The session is an implementation detail of piqtec, so its absence is not an
+    error: the integration keeps working, only the per-request counters stay at
+    zero.
+    """
+    monitor = RequestMonitor()
+    session = getattr(hub, "_session", None)
+    if isinstance(session, requests.Session):
+        monitor.install(session)
+    else:
+        _LOGGER.warning("This piqtec version does not expose its HTTP session; request counters stay at zero")
+    return monitor
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: IqTecConfigEntry) -> bool:
     """Set up IQtec Smart Home from a config entry."""
     try:
         hub = await hass.async_add_executor_job(Controller, entry.data[CONF_HOST])
     except IQtecError as err:
         raise ConfigEntryNotReady(f"Cannot connect to the IQtec controller: {err}") from err
+    monitor = _monitor_traffic(hub)
 
     await _async_migrate_unique_ids(hass, entry)
 
-    coordinator = IqTecCoordinator(hass, entry, hub)
+    coordinator = IqTecCoordinator(hass, entry, hub, monitor)
     await coordinator.async_config_entry_first_refresh()
 
-    calendars = IqTecCalendarCoordinator(hass, entry, hub)
+    calendars = IqTecCalendarCoordinator(hass, entry, hub, monitor)
     await calendars.async_config_entry_first_refresh()
 
     entry.runtime_data = IQTecData(
         coordinator=coordinator,
         calendars=calendars,
+        monitor=monitor,
         cover_use_short_tilt=entry.data.get(CONF_COVER_USE_SHORT_TILT, False),
         correction_time=entry.data.get(CONF_CORRECTION_TIMEOUT, DEFAULT_CORRECTION_TIMEOUT),
     )
     async_register_services(hass)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
+    # Every enabled entity has registered what it needs by now.
+    coordinator.async_finish_discovery()
 
     return True
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: IqTecConfigEntry) -> None:
-    """Rebuild the entities after the display options change."""
+    """Rebuild the entities after the options change."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 

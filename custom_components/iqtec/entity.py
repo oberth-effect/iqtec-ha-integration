@@ -33,6 +33,11 @@ class IqTecEntity(CoordinatorEntity[IqTecCoordinator]):
 class IqTecUnitEntity[S](IqTecEntity):
     """An entity backed by one of the modelled units (room, sunblind)."""
 
+    async def async_added_to_hass(self) -> None:
+        """Ask the coordinator to keep reading this unit."""
+        await super().async_added_to_hass()
+        self.async_on_remove(self.coordinator.async_track_unit(self.idx))
+
     @property
     def iqtec_state(self) -> S:
         """Current state of the backing unit."""
@@ -66,6 +71,11 @@ class IqTecVariableEntity(IqTecEntity):
         self._device_idx = device
         self._attr_name = idx
         self._attr_device_info = _DEVICE_INFO | DeviceInfo(identifiers={(DOMAIN, device)}, name=f"_{device}")
+
+    async def async_added_to_hass(self) -> None:
+        """Ask the coordinator to keep reading this variable."""
+        await super().async_added_to_hass()
+        self.async_on_remove(self.coordinator.async_track_variable(self._device_idx, self.idx))
 
     @property
     def raw_value(self) -> Any:
