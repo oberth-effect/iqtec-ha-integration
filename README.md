@@ -63,7 +63,7 @@ data:
 ```
 
 For a drag-and-drop editor, install
-[the calendar card](https://github.com/oberth-effect/iqtec-ha-component).
+[the calendar card](https://github.com/oberth-effect/iqtec-ha-calendar-card).
 
 ### Telling a calendar what it really is
 
