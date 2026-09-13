@@ -30,7 +30,7 @@ from .const import (
     SERVICE_SET_CALENDAR,
 )
 from .coordinator import IqTecCalendarCoordinator, IqTecConfigEntry
-from .entity import IqTecEntity
+from .entity import MANUFACTURER, IqTecEntity, device_identifiers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -150,8 +150,8 @@ class IqTecCalendarSensor(IqTecEntity, SensorEntity):
         super().__init__(coordinator, idx)
         self._attr_name = f"Calendar {coordinator.hub.calendars[idx].index}"
         self._attr_device_info = DeviceInfo(
-            manufacturer="IQtec/Kobra",
-            identifiers={(DOMAIN, f"{coordinator.config_entry.entry_id}-calendars")},
+            manufacturer=MANUFACTURER,
+            identifiers=device_identifiers(coordinator.config_entry, "calendars"),
             name="IQtec Calendars",
         )
 
@@ -215,7 +215,10 @@ async def _async_set_calendar(hass: HomeAssistant, call: ServiceCall) -> None:
     if ATTR_DAYS in call.data:
         days = []
         for number, raw in enumerate(call.data[ATTR_DAYS]):
-            day = CalendarDay(as_monday=raw.get(ATTR_AS_MONDAY, current.days[number].as_monday))
+            # A calendar read back from a switched-off variable has no days to
+            # inherit from; the service is how it gets some.
+            as_monday = current.days[number].as_monday if number < len(current.days) else False
+            day = CalendarDay(as_monday=raw.get(ATTR_AS_MONDAY, as_monday))
             try:
                 day.set_transitions([CalendarEdge(time, level) for time, level in raw[ATTR_TRANSITIONS]])
             except IQtecError as err:

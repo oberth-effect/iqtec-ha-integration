@@ -11,7 +11,7 @@
   "issue_tracker": "https://github.com/oberth-effect/iqtec-ha-integration/issues",
   "quality_scale": "bronze",
   "requirements": [
-    "piqtec==0.6.0"
+    "piqtec==0.6.1"
   ],
   "version": "0.6.2"
 }

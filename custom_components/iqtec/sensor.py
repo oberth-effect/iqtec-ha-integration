@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
     UnitOfTemperature,
 )
-from homeassistant.const import CONF_HOST, EntityCategory, UnitOfTime
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -22,7 +22,7 @@ from homeassistant.helpers.typing import StateType
 from .calendar_schedule import IqTecCalendarSensor
 from .const import DOMAIN
 from .coordinator import IqTecConfigEntry, IqTecCoordinator
-from .entity import IqTecVariableEntity
+from .entity import MANUFACTURER, IqTecVariableEntity
 from .monitor import RequestStats
 
 PARALLEL_UPDATES = 0
@@ -42,8 +42,10 @@ async def async_setup_entry(
     sensors.extend(IqTecCalendarSensor(config_entry.runtime_data.calendars, idx) for idx in coordinator.hub.calendars)
     for device_idx, device in coordinator.hub.devices.items():
         for idx, api in device.sensor_apis.items():
-            if api.typ in {"Temperature", "Humidity"}:
+            if api.typ == "Temperature":
                 sensors.append(IqTecTemperatureSensor(coordinator, idx, device_idx))
+            elif api.typ == "Humidity":
+                sensors.append(IqTecHumiditySensor(coordinator, idx, device_idx))
             elif api.typ in _NUMERIC_TYPES:
                 sensors.append(IqTecNumericSensor(coordinator, idx, device_idx))
     async_add_entities(sensors)
@@ -66,6 +68,14 @@ class IqTecTemperatureSensor(IqTecSensor):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_suggested_display_precision = 1
+
+
+class IqTecHumiditySensor(IqTecSensor):
+    """IQtec Humidity Entity."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_suggested_display_precision = 0
 
 
 class IqTecNumericSensor(IqTecSensor):
@@ -162,9 +172,9 @@ class IqTecStatsSensor(SensorEntity):
         self._attr_unique_id = f"{entry.entry_id}-stats-{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            manufacturer="IQtec/Kobra",
+            manufacturer=MANUFACTURER,
             name=entry.title,
-            configuration_url=f"http://{entry.data[CONF_HOST]}",
+            configuration_url=f"http://{coordinator.hub.host}",
         )
 
     async def async_added_to_hass(self) -> None:

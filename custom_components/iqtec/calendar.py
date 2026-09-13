@@ -23,9 +23,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .calendar_schedule import display_type, level_names
-from .const import DOMAIN
 from .coordinator import IqTecCalendarCoordinator, IqTecConfigEntry
-from .entity import IqTecEntity
+from .entity import MANUFACTURER, IqTecEntity, device_identifiers
 
 PARALLEL_UPDATES = 0
 
@@ -55,8 +54,8 @@ class IqTecScheduleCalendar(IqTecEntity, CalendarEntity):
         index = coordinator.hub.calendars[idx].index
         self._attr_name = (state.name if state else None) or f"Calendar {index}"
         self._attr_device_info = DeviceInfo(
-            manufacturer="IQtec/Kobra",
-            identifiers={(DOMAIN, f"{coordinator.config_entry.entry_id}-calendars")},
+            manufacturer=MANUFACTURER,
+            identifiers=device_identifiers(coordinator.config_entry, "calendars"),
             name="IQtec Calendars",
         )
 

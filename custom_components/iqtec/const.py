@@ -29,5 +29,6 @@ ATTR_DAYS = "days"
 ATTR_TRANSITIONS = "transitions"
 ATTR_AS_MONDAY = "as_monday"
 
-# System variables worth exposing even though they are not discovered as devices.
+# Writable variables whose switch is enabled and visible out of the box. Every
+# other generic variable waits for a user to enable it.
 MANUAL_SWITCHES = ["SYSTEM.SET_HEAT"]

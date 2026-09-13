@@ -17,9 +17,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
 from .coordinator import IqTecConfigEntry, IqTecCoordinator
-from .entity import IqTecUnitEntity
+from .entity import MANUFACTURER, IqTecUnitEntity, device_identifiers
 
 PARALLEL_UPDATES = 0
 
@@ -61,8 +60,11 @@ class IqTecCover(IqTecUnitEntity[SunblindState], CoverEntity):
         if self.iqtec_state.full_time_time:
             self._attr_supported_features |= _TILT_FEATURES
 
+        # A sunblind hangs on the device of the room it is named after.
         room_id = idx.split("_")[0]
-        self._attr_device_info = DeviceInfo(manufacturer="IQtec/Kobra", identifiers={(DOMAIN, room_id)})
+        self._attr_device_info = DeviceInfo(
+            manufacturer=MANUFACTURER, identifiers=device_identifiers(coordinator.config_entry, room_id)
+        )
 
     @property
     def iqtec_state(self) -> SunblindState:

@@ -5,13 +5,26 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
+from piqtec import InvalidValueError, IQtecError
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import IqTecCoordinator
 
-_DEVICE_INFO = DeviceInfo(manufacturer="IQtec/Kobra")
+MANUFACTURER = "IQtec/Kobra"
+
+
+def device_identifiers(entry: ConfigEntry, idx: str) -> set[tuple[str, str]]:
+    """Identify one device of a config entry.
+
+    Every installation calls its rooms R1..Rn and has a SYSTEM device, so the
+    entry id keeps the devices of two controllers apart.
+    """
+    return {(DOMAIN, f"{entry.entry_id}-{idx}")}
 
 
 class IqTecEntity(CoordinatorEntity[IqTecCoordinator]):
@@ -25,8 +38,17 @@ class IqTecEntity(CoordinatorEntity[IqTecCoordinator]):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}-{idx}"
 
     async def _async_command(self, func, *args: Any) -> None:
-        """Run a blocking controller command, then refresh."""
-        await self.hass.async_add_executor_job(self.coordinator.monitor.exclusive, func, *args)
+        """Run a blocking controller command, then refresh.
+
+        piqtec reports every failure as an IQtecError. A value it cannot
+        transmit is the caller's mistake; anything else is the controller's.
+        """
+        try:
+            await self.hass.async_add_executor_job(self.coordinator.monitor.exclusive, func, *args)
+        except InvalidValueError as err:
+            raise ServiceValidationError(f"{self.idx}: {err}") from err
+        except IQtecError as err:
+            raise HomeAssistantError(f"{self.idx}: {err}") from err
         await self.coordinator.async_request_refresh()
 
 
@@ -70,7 +92,11 @@ class IqTecVariableEntity(IqTecEntity):
         super().__init__(coordinator, idx)
         self._device_idx = device
         self._attr_name = idx
-        self._attr_device_info = _DEVICE_INFO | DeviceInfo(identifiers={(DOMAIN, device)}, name=f"_{device}")
+        self._attr_device_info = DeviceInfo(
+            manufacturer=MANUFACTURER,
+            identifiers=device_identifiers(coordinator.config_entry, device),
+            name=f"_{device}",
+        )
 
     async def async_added_to_hass(self) -> None:
         """Ask the coordinator to keep reading this variable."""

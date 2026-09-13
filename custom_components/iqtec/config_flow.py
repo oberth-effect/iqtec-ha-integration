@@ -54,18 +54,23 @@ SCAN_INTERVAL_SELECTOR = NumberSelector(
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
+    """Validate the user input allows us to connect.
 
-    def _connect() -> str:
+    Returns the controller's name and its host as piqtec normalises it, so that
+    a scheme or a trailing slash in the input cannot make a second entry for the
+    same controller.
+    """
+
+    def _connect() -> tuple[str, str]:
         with Controller(data[CONF_HOST]) as controller:
-            return controller.name
+            return controller.name, controller.host
 
     try:
-        name = await hass.async_add_executor_job(_connect)
+        name, host = await hass.async_add_executor_job(_connect)
     except IQtecError as err:
         raise CannotConnect(f"Got {err}") from err
 
-    return {"url": data[CONF_HOST], "name": name}
+    return {"host": host, "name": name}
 
 
 class IQTecConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -83,8 +88,6 @@ class IQTecConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            await self.async_set_unique_id(f"iqtec_platform_{user_input[CONF_HOST]}")
-            self._abort_if_unique_id_configured()
             try:
                 info = await validate_input(self.hass, user_input)
             except CannotConnect:
@@ -93,9 +96,11 @@ class IQTecConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
+                await self.async_set_unique_id(f"iqtec_platform_{info['host']}")
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=f"{info['name']} ({info['url']})",
-                    data=user_input,
+                    title=f"{info['name']} ({info['host']})",
+                    data={**user_input, CONF_HOST: info["host"]},
                 )
 
         return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)

@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import ANY
 
-from piqtec import CalendarLevel, IQtecConnectionError
+from piqtec import CalendarLevel, CalendarState, IQtecConnectionError
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -100,6 +100,20 @@ async def test_set_calendar_updates_setpoints(hass: HomeAssistant, mock_controll
 
     written = mock_controller.write_calendar.call_args.args[1]
     assert written.temperatures == [15.0, 18.0, 21.0, 27.0, 25.0, 22.0]
+
+
+async def test_set_calendar_gives_a_blank_calendar_its_days(hass: HomeAssistant, mock_controller, calendars) -> None:
+    """A calendar the controller reads back empty has no days to inherit from, yet can be written."""
+    calendars["_CALENDAR_00"] = CalendarState(name="Blank", temperatures=[14.0, 17.0, 20.0, 27.0, 25.0, 22.0])
+    await setup_entry(hass)
+    assert hass.states.get(ENTITY).attributes["days"] == []
+
+    days = [{"transitions": [[0, 1], [80, 2]]} for _ in range(8)]
+    await hass.services.async_call(DOMAIN, SERVICE_SET_CALENDAR, {"calendar_id": ENTITY, "days": days}, blocking=True)
+
+    written = mock_controller.write_calendar.call_args.args[1]
+    assert len(written.days) == 8
+    assert not any(day.as_monday for day in written.days)
 
 
 async def test_set_calendar_rejects_a_schedule_the_controller_would_refuse(

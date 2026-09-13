@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from piqtec import CalendarState, State, SystemState
 from piqtec.api.generic import DriverAPI
+from piqtec.controller import base_url
 from piqtec.type_helpers import RequestSet, Response, ResponseSet
 from piqtec.unit.calendar import CalendarDay, CalendarEdge
 from piqtec.unit.device import Device
@@ -32,8 +33,9 @@ def _driver(name: str, typ: str, structure_id: int, offset: int, access: str = "
     )
 
 
-# A tiny data.xml: the system, one room, one sunblind and a pump, each in a
-# structure of its own so that structure reads can be told apart by address.
+# A tiny data.xml: the system, one room, one sunblind, a pump and a weather
+# probe, each in a structure of its own so that structure reads can be told
+# apart by address.
 APIS: dict[str, DriverAPI] = {
     api.name: api
     for api in (
@@ -44,6 +46,7 @@ APIS: dict[str, DriverAPI] = {
         _driver("R1.HeatingEnabled", "bool", 3, 2),
         _driver("R1.RoomMode", "RoomMode", 3, 3, access="U"),
         _driver("R1.CorrectionStatus", "CorrectionStatus", 3, 4, access="U"),
+        _driver("R1.CalendarNumber", "CalendarIndex", 3, 5, access="U"),
         _driver("R1_SUNBLIND_1.Name", "string16", 4, 0),
         _driver("R1_SUNBLIND_1.Position", "word", 4, 1),
         _driver("R1_SUNBLIND_1.Rotation", "word", 4, 2),
@@ -51,6 +54,8 @@ APIS: dict[str, DriverAPI] = {
         _driver("R1_SUNBLIND_1.COMMAND", "SUNBLIND_COMMAND", 4, 4, access="U"),
         _driver("PUMP.Out", "bool", 7, 0),
         _driver("PUMP.Speed", "byte", 7, 1, access="U"),
+        _driver("METEO.Humidity", "Humidity", 8, 0),
+        _driver("METEO.Level", "word", 8, 1, access="U"),
     )
 }
 
@@ -62,6 +67,7 @@ VALUES: dict[str, str] = {
     "1/3/2": "1",
     "1/3/3": "0",
     "1/3/4": "0",
+    "1/3/5": "0",
     "1/4/0": "Okno",
     "1/4/1": "0",
     "1/4/2": "0",
@@ -69,14 +75,18 @@ VALUES: dict[str, str] = {
     "1/4/4": "3",
     "1/7/0": "1",
     "1/7/1": "3",
+    "1/8/0": "45.0",
+    "1/8/1": "120",
 }
 
 SYSTEM_ADDRESS = "1/1/"
 ROOM_ADDRESS = "1/3/"
 SUNBLIND_ADDRESS = "1/4/"
 PUMP_ADDRESS = "1/7/"
+METEO_ADDRESS = "1/8/"
 SET_HEAT_ADDRESS = "1/1/0"
 PUMP_OUT_ADDRESS = "1/7/0"
+METEO_LEVEL_ADDRESS = "1/8/1"
 
 
 class FakeController:
@@ -90,6 +100,7 @@ class FakeController:
     name = "IQtec Controller"
 
     def __init__(self, calendars: dict[str, CalendarState]) -> None:
+        self.host = "iqtec.home"
         self.values = dict(VALUES)
         self.requests: list[RequestSet] = []
         self.fail_with: Exception | None = None
@@ -105,7 +116,11 @@ class FakeController:
 
         self.rooms = {"R1": Room(self, "R1", APIS)}
         self.sunblinds = {"R1_SUNBLIND_1": Sunblind(self, "R1_SUNBLIND_1", APIS)}
-        self.devices = {"PUMP": Device(self, "PUMP", APIS), "SYSTEM": Device(self, "SYSTEM", APIS)}
+        self.devices = {
+            "METEO": Device(self, "METEO", APIS),
+            "PUMP": Device(self, "PUMP", APIS),
+            "SYSTEM": Device(self, "SYSTEM", APIS),
+        }
         self.calendars = {"_CALENDAR_00": MagicMock(index=0)}
 
         self.write_calendar = MagicMock()
@@ -173,9 +188,6 @@ class FakeController:
                 raise self.fail_with
             return self._calendars
 
-    def get_calendar_names(self) -> list[tuple[str, str | None]]:
-        return [(idx, state.name) for idx, state in self.read_calendars().items()]
-
 
 @pytest.fixture
 def calendars() -> dict[str, CalendarState]:
@@ -195,8 +207,14 @@ def calendars() -> dict[str, CalendarState]:
 def mock_controller(calendars: dict[str, CalendarState]):
     """Patch the piqtec Controller everywhere the integration constructs one."""
     controller = FakeController(calendars)
+
+    def connect(host: str, *args, **kwargs) -> FakeController:
+        # Like piqtec, accept a scheme and a trailing slash but report the bare host.
+        controller.host = base_url("http", host).partition("://")[2]
+        return controller
+
     with (
-        patch("custom_components.iqtec.Controller", return_value=controller),
-        patch("custom_components.iqtec.config_flow.Controller", return_value=controller),
+        patch("custom_components.iqtec.Controller", side_effect=connect),
+        patch("custom_components.iqtec.config_flow.Controller", side_effect=connect),
     ):
         yield controller

@@ -8,9 +8,9 @@ from piqtec import Controller, IQtecError
 import requests
 
 from homeassistant.const import CONF_HOST, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .calendar_schedule import async_register_services
 from .const import CONF_CORRECTION_TIMEOUT, CONF_COVER_USE_SHORT_TILT, DEFAULT_CORRECTION_TIMEOUT, DOMAIN
@@ -43,6 +43,26 @@ async def _async_migrate_unique_ids(hass: HomeAssistant, entry: IqTecConfigEntry
     await er.async_migrate_entries(hass, entry.entry_id, migrate)
 
 
+@callback
+def _async_migrate_device_identifiers(hass: HomeAssistant, entry: IqTecConfigEntry) -> None:
+    """Scope device identifiers to the config entry, as the unique ids are.
+
+    Rooms, covers and generic devices used to be identified by their controller
+    name alone, which every installation shares. Those of this entry get the
+    entry id prepended; a device already scoped to an entry, this one or
+    another, is left alone.
+    """
+    registry = dr.async_get(hass)
+    entry_ids = {other.entry_id for other in hass.config_entries.async_entries(DOMAIN)}
+    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+        identifiers = {
+            (domain, value if domain != DOMAIN or value.partition("-")[0] in entry_ids else f"{entry.entry_id}-{value}")
+            for domain, value in device.identifiers
+        }
+        if identifiers != device.identifiers:
+            registry.async_update_device(device.id, new_identifiers=identifiers)
+
+
 def _monitor_traffic(hub: Controller) -> RequestMonitor:
     """Count the requests piqtec makes on the HTTP session of the hub.
 
@@ -68,6 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: IqTecConfigEntry) -> boo
     monitor = _monitor_traffic(hub)
 
     await _async_migrate_unique_ids(hass, entry)
+    _async_migrate_device_identifiers(hass, entry)
 
     coordinator = IqTecCoordinator(hass, entry, hub, monitor)
     await coordinator.async_config_entry_first_refresh()

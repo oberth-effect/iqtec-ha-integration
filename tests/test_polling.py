@@ -25,6 +25,8 @@ SYSTEM_ADDRESS = "1/1/"
 ROOM_ADDRESS = "1/3/"
 SUNBLIND_ADDRESS = "1/4/"
 PUMP_ADDRESS = "1/7/"
+METEO_ADDRESS = "1/8/"
+SET_HEAT_ADDRESS = "1/1/0"
 PUMP_OUT_ADDRESS = "1/7/0"
 
 ENTRY_DATA = {
@@ -74,14 +76,17 @@ async def test_later_polls_read_only_what_enabled_entities_need(hass: HomeAssist
     # Climate and cover are enabled by default and read as whole structures.
     assert ROOM_ADDRESS in paths
     assert SUNBLIND_ADDRESS in paths
-    # Every generic variable, SET_HEAT included, is disabled by default, so
-    # neither the SYSTEM nor the pump structure is touched.
-    assert not any(path.startswith(SYSTEM_ADDRESS) for path in paths)
+    # SET_HEAT is the one generic variable enabled out of the box, so it is
+    # read on its own; the rest of SYSTEM and the other devices stay untouched.
+    assert SET_HEAT_ADDRESS in paths
+    assert SYSTEM_ADDRESS not in paths
     assert not any(path.startswith(PUMP_ADDRESS) for path in paths)
+    assert not any(path.startswith(METEO_ADDRESS) for path in paths)
 
     # And the reduced poll still feeds the entities.
     assert hass.states.get("climate.obyvak").attributes["current_temperature"] == 21.0
     assert hass.states.get("cover.okno").state == "open"
+    assert hass.states.get("switch.system_set_heat").state == "off"
 
 
 async def test_enabling_an_entity_adds_its_variable_to_the_poll(hass: HomeAssistant, mock_controller) -> None:

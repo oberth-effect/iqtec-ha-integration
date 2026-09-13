@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from piqtec import RoomCorrectionMode, RoomMode, RoomState
+from piqtec import MissingVariableError, RoomCorrectionMode, RoomMode, RoomState
+from piqtec.type_helpers import RequestSet
 
 from homeassistant.components.climate import (
     ATTR_TEMPERATURE,
@@ -20,9 +21,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
 from .coordinator import IqTecConfigEntry, IqTecCoordinator
-from .entity import IqTecUnitEntity
+from .entity import MANUFACTURER, IqTecUnitEntity, device_identifiers
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,13 +37,14 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up climate entries."""
-    coordinator = config_entry.runtime_data.coordinator
-    raw_calendars = await hass.async_add_executor_job(coordinator.monitor.exclusive, coordinator.hub.get_calendar_names)
-    calendars = {int(idx.removeprefix("_CALENDAR_")): name or idx for idx, name in raw_calendars}
-    async_add_entities(
-        IqTecClimate(coordinator, idx, calendars, config_entry.runtime_data.correction_time)
-        for idx in coordinator.hub.rooms
-    )
+    data = config_entry.runtime_data
+    coordinator = data.coordinator
+    # The calendar coordinator has read every calendar already. A room refers
+    # to its calendar by the number in the calendar's address.
+    calendars = {
+        coordinator.hub.calendars[idx].index: state.name or idx for idx, state in (data.calendars.data or {}).items()
+    }
+    async_add_entities(IqTecClimate(coordinator, idx, calendars, data.correction_time) for idx in coordinator.hub.rooms)
 
 
 class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
@@ -67,8 +68,8 @@ class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
         self._calendars = {number: f"({number}) {name}" for number, name in calendars.items()}
         self.manual_time = manual_time
         self._attr_device_info = DeviceInfo(
-            manufacturer="IQtec/Kobra",
-            identifiers={(DOMAIN, idx)},
+            manufacturer=MANUFACTURER,
+            identifiers=device_identifiers(coordinator.config_entry, idx),
             name=self.iqtec_state.name or idx,
         )
 
@@ -136,17 +137,35 @@ class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
         """Current target temperature."""
         return self.iqtec_state.requested_temperature
 
+    def _write_room(self, values: dict[str, Any]) -> None:
+        """Write several room variables in one request.
+
+        The controller applies them in order, and the poll that follows never
+        sees the mode changed but the correction not yet, or the other way round.
+        """
+        request = RequestSet()
+        for field_name, value in values.items():
+            api = self._room.apis.get(field_name)
+            if api is None:
+                raise MissingVariableError(f"{self.idx} has no variable {field_name!r}")
+            request = request + api.set_request(value)
+        self._hub.api_call(request)
+
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         match hvac_mode:
             case HVACMode.OFF:
                 await self._async_command(self._room.set_room_mode, RoomMode.OFF)
             case HVACMode.HEAT:
-                await self._async_command(self._room.set_room_mode, RoomMode.CALENDAR)
-                await self._async_command(self._room.set_correction_mode, RoomCorrectionMode.MANUAL)
+                await self._async_command(
+                    self._write_room,
+                    {"room_mode": int(RoomMode.CALENDAR), "correction_status": int(RoomCorrectionMode.MANUAL)},
+                )
             case HVACMode.AUTO:
-                await self._async_command(self._room.set_room_mode, RoomMode.CALENDAR)
-                await self._async_command(self._room.set_correction_mode, RoomCorrectionMode.NONE)
+                await self._async_command(
+                    self._write_room,
+                    {"room_mode": int(RoomMode.CALENDAR), "correction_status": int(RoomCorrectionMode.NONE)},
+                )
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new target preset mode."""
@@ -159,8 +178,9 @@ class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
             if preset_mode not in calendars:
                 _LOGGER.warning("Unknown preset %s for %s", preset_mode, self.idx)
                 return
-            await self._async_command(self._room.set_room_mode, RoomMode.CALENDAR)
-            await self._async_command(self._room.set_calendar, calendars[preset_mode])
+            await self._async_command(
+                self._write_room, {"room_mode": int(RoomMode.CALENDAR), "calendar_number": calendars[preset_mode]}
+            )
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
