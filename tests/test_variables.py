@@ -5,19 +5,29 @@ from datetime import timedelta
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
-from custom_components.iqtec.const import CONF_CORRECTION_TIMEOUT, CONF_COVER_USE_SHORT_TILT, DOMAIN
+from custom_components.iqtec.const import (
+    CONF_CORRECTION_TIMEOUT,
+    CONF_COVER_USE_SHORT_TILT,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
 from homeassistant.components.number import ATTR_VALUE, DOMAIN as NUMBER_DOMAIN, SERVICE_SET_VALUE
+from homeassistant.components.select import ATTR_OPTION, DOMAIN as SELECT_DOMAIN, SERVICE_SELECT_OPTION
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN, SERVICE_TURN_ON
 from homeassistant.config_entries import RELOAD_AFTER_UPDATE_DELAY
-from homeassistant.const import ATTR_ENTITY_ID, CONF_HOST, PERCENTAGE
+from homeassistant.const import ATTR_ENTITY_ID, CONF_HOST, PERCENTAGE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.icon import async_get_icons
+from homeassistant.helpers.translation import async_get_translations
 from homeassistant.util import dt as dt_util
 
 # Addresses of the fake controller in conftest.py.
 SET_HEAT_ADDRESS = "1/1/0"
 SUMMER_ADDRESS = "1/1/2"
+CIRCULATION_MODE_ADDRESS = "1/1/3"
+ROOM_TEMPERATURE_ADDRESS = "1/3/1"
 METEO_LEVEL_ADDRESS = "1/8/1"
 
 ENTRY_DATA = {
@@ -33,6 +43,12 @@ async def setup_entry(hass: HomeAssistant) -> MockConfigEntry:
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     return entry
+
+
+async def poll(hass: HomeAssistant) -> None:
+    """Let the next scheduled poll happen."""
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=DEFAULT_SCAN_INTERVAL + 1))
+    await hass.async_block_till_done(wait_background_tasks=True)
 
 
 async def enable(hass: HomeAssistant, entry: MockConfigEntry, *wanted: tuple[str, str]) -> list[str]:
@@ -110,3 +126,72 @@ async def test_whole_number_variables_take_whole_numbers_only(hass: HomeAssistan
             NUMBER_DOMAIN, SERVICE_SET_VALUE, {ATTR_ENTITY_ID: number, ATTR_VALUE: 12.5}, blocking=True
         )
     assert mock_controller.values[METEO_LEVEL_ADDRESS] == "121"
+
+
+async def test_on_off_auto_variables_are_selects(hass: HomeAssistant, mock_controller) -> None:
+    """A writable On/Off/Auto variable is a select in the controller's order, labelled through translations."""
+    entry = await setup_entry(hass)
+    (select,) = await enable(hass, entry, ("select", "SYSTEM.CirculationMode"))
+
+    state = hass.states.get(select)
+    assert state.state == "auto"
+    assert state.attributes["options"] == ["off", "on", "auto"]
+    assert state.attributes["raw_value"] == 2
+    assert er.async_get(hass).async_get(select).translation_key == "on_off_auto"
+
+    await hass.services.async_call(
+        SELECT_DOMAIN, SERVICE_SELECT_OPTION, {ATTR_ENTITY_ID: select, ATTR_OPTION: "on"}, blocking=True
+    )
+
+    assert mock_controller.values[CIRCULATION_MODE_ADDRESS] == "1"
+    assert hass.states.get(select).state == "on"
+
+
+async def test_an_unexpected_on_off_auto_value_reads_as_unknown(hass: HomeAssistant, mock_controller, caplog) -> None:
+    """A value that is none of the three is unknown, kept as an attribute and reported once per value."""
+    mock_controller.values[CIRCULATION_MODE_ADDRESS] = "7"
+    entry = await setup_entry(hass)
+    (select,) = await enable(hass, entry, ("select", "SYSTEM.CirculationMode"))
+
+    state = hass.states.get(select)
+    assert state.state == STATE_UNKNOWN
+    assert state.attributes["raw_value"] == 7
+    assert caplog.text.count("SYSTEM.CirculationMode reports 7") == 1
+
+    # A poll that changes something else rewrites the state without a second report.
+    mock_controller.values[ROOM_TEMPERATURE_ADDRESS] = "22.0"
+    await poll(hass)
+    assert hass.states.get(select).state == STATE_UNKNOWN
+    assert caplog.text.count("SYSTEM.CirculationMode reports 7") == 1
+
+    # A different stray value is news again.
+    mock_controller.values[CIRCULATION_MODE_ADDRESS] = "8"
+    await poll(hass)
+    assert hass.states.get(select).attributes["raw_value"] == 8
+    assert caplog.text.count("SYSTEM.CirculationMode reports 8") == 1
+
+
+async def test_read_only_on_off_auto_variables_are_enum_sensors(hass: HomeAssistant, mock_controller) -> None:
+    """A read-only On/Off/Auto variable is a sensor with the same three states."""
+    entry = await setup_entry(hass)
+    (sensor,) = await enable(hass, entry, ("sensor", "SYSTEM.HeatSource"))
+
+    state = hass.states.get(sensor)
+    assert state.state == "on"
+    assert state.attributes["device_class"] == "enum"
+    assert state.attributes["options"] == ["off", "on", "auto"]
+    assert "state_class" not in state.attributes
+    assert er.async_get(hass).async_get(sensor).translation_key == "on_off_auto"
+
+
+async def test_on_off_auto_labels_and_icons_are_complete(hass: HomeAssistant, mock_controller) -> None:
+    """Every state of the select and the sensor has a label and an icon, so the UI never shows a raw id."""
+    await setup_entry(hass)
+    translations = await async_get_translations(hass, "en", "entity", {DOMAIN})
+    icons = (await async_get_icons(hass, "entity", {DOMAIN}))[DOMAIN]
+
+    for platform in ("select", "sensor"):
+        for option in ("off", "on", "auto"):
+            assert translations[f"component.{DOMAIN}.entity.{platform}.on_off_auto.state.{option}"]
+            assert icons[platform]["on_off_auto"]["state"][option].startswith("mdi:")
+        assert icons[platform]["on_off_auto"]["default"].startswith("mdi:")

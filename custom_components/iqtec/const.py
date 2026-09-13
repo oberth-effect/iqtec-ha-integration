@@ -39,3 +39,7 @@ ATTR_AS_MONDAY = "as_monday"
 # Writable variables that data.xml types as numbers (SET_HEAT is a byte) but
 # that only ever hold 0 or 1. They are offered as switches, not numbers.
 MANUAL_SWITCHES = ["SYSTEM.SET_HEAT"]
+
+# The three positions of an On/Off/Auto variable in the controller's order. The
+# labels double as translation keys for the select and the enum sensor.
+ON_OFF_AUTO: dict[str, int] = {"off": 0, "on": 1, "auto": 2}

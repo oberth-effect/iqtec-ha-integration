@@ -6,12 +6,11 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import ON_OFF_AUTO
 from .coordinator import IqTecConfigEntry
-from .entity import IqTecVariableEntity
+from .entity import IqTecOnOffAutoVariable
 
 PARALLEL_UPDATES = 0
-
-_ON_OFF_AUTO = {0: "off", 1: "on", 2: "auto"}
 
 
 async def async_setup_entry(
@@ -30,18 +29,16 @@ async def async_setup_entry(
     )
 
 
-class IqTecOnOffAuto(IqTecVariableEntity, SelectEntity):
-    """IQtec OnOffAuto Entity."""
+class IqTecOnOffAuto(IqTecOnOffAutoVariable, SelectEntity):
+    """A writable On/Off/Auto variable."""
 
     _source = "switches"
-    _attr_options = list(_ON_OFF_AUTO.values())
 
     @property
     def current_option(self) -> str | None:
         """Currently selected option."""
-        return _ON_OFF_AUTO.get(self.raw_value)
+        return self.position
 
     async def async_select_option(self, option: str) -> None:
         """Select an option."""
-        value = next(key for key, name in _ON_OFF_AUTO.items() if name == option)
-        await self._async_write(value)
+        await self._async_write(ON_OFF_AUTO[option])

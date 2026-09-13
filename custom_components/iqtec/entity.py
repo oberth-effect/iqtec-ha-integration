@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import logging
 from typing import Any
 
 from piqtec import InvalidValueError, IQtecError
@@ -12,10 +13,14 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import BURST_AFTER_COMMAND, DOMAIN
+from .const import BURST_AFTER_COMMAND, DOMAIN, ON_OFF_AUTO
 from .coordinator import IqTecCoordinator
 
+_LOGGER = logging.getLogger(__name__)
+
 MANUFACTURER = "IQtec/Kobra"
+
+_ON_OFF_AUTO_LABELS = {value: label for label, value in ON_OFF_AUTO.items()}
 
 
 def device_identifiers(entry: ConfigEntry, idx: str) -> set[tuple[str, str]]:
@@ -118,3 +123,38 @@ class IqTecVariableEntity(IqTecEntity):
 
     async def _async_write(self, value: Any) -> None:
         await self._async_command(self._hub.devices[self._device_idx].set_value, self.idx, value)
+
+
+class IqTecOnOffAutoVariable(IqTecVariableEntity):
+    """A variable with the three positions off, on and auto.
+
+    The labels double as translation keys, so the select and the sensor show
+    Off, On and Auto with an icon per position. Any other value reads as
+    unknown, stays in the attributes as the controller sent it, and is
+    reported in the log once.
+    """
+
+    _attr_translation_key = "on_off_auto"
+    _attr_options = list(ON_OFF_AUTO)
+
+    def __init__(self, coordinator: IqTecCoordinator, idx: str, device: str) -> None:
+        """Initialise the variable with nothing reported yet."""
+        super().__init__(coordinator, idx, device)
+        self._reported: set[Any] = set()
+
+    @property
+    def position(self) -> str | None:
+        """The label of the current value, or None when it is none of the three."""
+        value = self.raw_value
+        if value is None:
+            return None
+        label = _ON_OFF_AUTO_LABELS.get(value)
+        if label is None and value not in self._reported:
+            self._reported.add(value)
+            _LOGGER.warning("%s reports %r, which is none of off, on or auto", self.idx, value)
+        return label
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The value as the controller sends it, telling when it is none of the three."""
+        return {"raw_value": self.raw_value}

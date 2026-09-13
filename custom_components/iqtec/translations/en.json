@@ -47,6 +47,26 @@
       }
     }
   },
+  "entity": {
+    "select": {
+      "on_off_auto": {
+        "state": {
+          "off": "Off",
+          "on": "On",
+          "auto": "Auto"
+        }
+      }
+    },
+    "sensor": {
+      "on_off_auto": {
+        "state": {
+          "off": "Off",
+          "on": "On",
+          "auto": "Auto"
+        }
+      }
+    }
+  },
   "services": {
     "set_calendar": {
       "description": "Replace an IQtec calendar's schedule, setpoints or name.",

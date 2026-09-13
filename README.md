@@ -32,7 +32,9 @@ This custom HA integration uses the [`piqtec`](https://github.com/oberth-effect/
 
 - Climate (currently heating only, cooling not implemented),
 - Cover (controls sunblinds, windows, etc.),
-- Sensor, Binary Sensor, Switch, Number, Select: all other variables discovered by `piqtec`.
+- Sensor, Binary Sensor, Switch, Number, Select: all other variables discovered by `piqtec`. On/Off/Auto variables
+  are selects with the positions Off, On and Auto; read-only ones are sensors with the same three states, each with
+  its own icon.
 
 Discovered variables are numerous and largely duplicated across a typical setup, so they are **disabled by default**.
 Enable the ones you need from the device page. Entities already enabled from an earlier version keep their state.

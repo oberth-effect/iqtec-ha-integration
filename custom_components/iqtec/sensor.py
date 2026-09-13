@@ -22,7 +22,7 @@ from homeassistant.helpers.typing import StateType
 from .calendar_schedule import IqTecCalendarSensor
 from .const import DOMAIN
 from .coordinator import IqTecConfigEntry, IqTecCoordinator
-from .entity import MANUFACTURER, IqTecVariableEntity
+from .entity import MANUFACTURER, IqTecOnOffAutoVariable, IqTecVariableEntity
 from .monitor import RequestStats
 
 PARALLEL_UPDATES = 0
@@ -46,6 +46,8 @@ async def async_setup_entry(
                 sensors.append(IqTecTemperatureSensor(coordinator, idx, device_idx))
             elif api.typ == "Humidity":
                 sensors.append(IqTecHumiditySensor(coordinator, idx, device_idx))
+            elif api.typ == "OnOffAuto":
+                sensors.append(IqTecOnOffAutoSensor(coordinator, idx, device_idx))
             elif api.typ in _NUMERIC_TYPES:
                 sensors.append(IqTecNumericSensor(coordinator, idx, device_idx))
     async_add_entities(sensors)
@@ -82,6 +84,17 @@ class IqTecNumericSensor(IqTecSensor):
     """IQtec Numeric Entity."""
 
     _attr_suggested_display_precision = 0
+
+
+class IqTecOnOffAutoSensor(IqTecOnOffAutoVariable, SensorEntity):
+    """A read-only On/Off/Auto variable, with the same three states as the select."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+
+    @property
+    def native_value(self) -> str | None:
+        """Current position."""
+        return self.position
 
 
 @dataclass(frozen=True, kw_only=True)

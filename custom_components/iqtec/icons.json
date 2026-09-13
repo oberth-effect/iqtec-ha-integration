@@ -1,0 +1,24 @@
+{
+  "entity": {
+    "select": {
+      "on_off_auto": {
+        "default": "mdi:toggle-switch-variant",
+        "state": {
+          "off": "mdi:toggle-switch-variant-off",
+          "on": "mdi:toggle-switch-variant",
+          "auto": "mdi:auto-mode"
+        }
+      }
+    },
+    "sensor": {
+      "on_off_auto": {
+        "default": "mdi:toggle-switch-variant",
+        "state": {
+          "off": "mdi:toggle-switch-variant-off",
+          "on": "mdi:toggle-switch-variant",
+          "auto": "mdi:auto-mode"
+        }
+      }
+    }
+  }
+}
