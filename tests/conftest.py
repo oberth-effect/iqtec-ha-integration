@@ -35,12 +35,14 @@ def _driver(name: str, typ: str, structure_id: int, offset: int, access: str = "
 
 # A tiny data.xml: the system, one room, one sunblind, a pump and a weather
 # probe, each in a structure of its own so that structure reads can be told
-# apart by address.
+# apart by address. SET_HEAT is a byte, as on the real controller, although it
+# only ever holds 0 or 1.
 APIS: dict[str, DriverAPI] = {
     api.name: api
     for api in (
-        _driver("SYSTEM.SET_HEAT", "OnOff", 1, 0, access="U"),
+        _driver("SYSTEM.SET_HEAT", "byte", 1, 0, access="U"),
         _driver("SYSTEM.OutTempearture", "Temperature", 1, 1),
+        _driver("SYSTEM.Summer", "OnOff", 1, 2, access="U"),
         _driver("R1._RoomName", "string16", 3, 0),
         _driver("R1.ActualTemperature", "Temperature", 3, 1),
         _driver("R1.HeatingEnabled", "bool", 3, 2),
@@ -64,6 +66,7 @@ APIS: dict[str, DriverAPI] = {
 VALUES: dict[str, str] = {
     "1/1/0": "0",
     "1/1/1": "12.5",
+    "1/1/2": "0",
     "1/3/0": "Obyvak",
     "1/3/1": "21.0",
     "1/3/2": "1",

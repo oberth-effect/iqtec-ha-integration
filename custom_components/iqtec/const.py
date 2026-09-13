@@ -36,6 +36,6 @@ ATTR_DAYS = "days"
 ATTR_TRANSITIONS = "transitions"
 ATTR_AS_MONDAY = "as_monday"
 
-# Writable variables whose switch is enabled and visible out of the box. Every
-# other generic variable waits for a user to enable it.
+# Writable variables that data.xml types as numbers (SET_HEAT is a byte) but
+# that only ever hold 0 or 1. They are offered as switches, not numbers.
 MANUAL_SWITCHES = ["SYSTEM.SET_HEAT"]

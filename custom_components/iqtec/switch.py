@@ -23,11 +23,13 @@ async def async_setup_entry(
     """Set up switch entries."""
     coordinator = config_entry.runtime_data.coordinator
 
+    # On/off variables are switches by type; MANUAL_SWITCHES names the ones
+    # data.xml types as numbers although they only ever hold 0 or 1.
     async_add_entities(
-        IqTecSwitch(coordinator, idx, device_idx, enabled=idx in MANUAL_SWITCHES)
+        IqTecSwitch(coordinator, idx, device_idx)
         for device_idx, device in coordinator.hub.devices.items()
         for idx, api in device.switch_apis.items()
-        if api.typ in {"OnOff", "bool"}
+        if api.typ in {"OnOff", "bool"} or idx in MANUAL_SWITCHES
     )
 
 
@@ -36,13 +38,6 @@ class IqTecSwitch(IqTecVariableEntity, SwitchEntity):
 
     _source = "switches"
     _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(self, coordinator, idx: str, device: str, enabled: bool = False) -> None:
-        """Initialise IQtec Switch; an enabled one is usable without a visit to the registry."""
-        super().__init__(coordinator, idx, device)
-        if enabled:
-            self._attr_entity_registry_enabled_default = True
-            self._attr_entity_registry_visible_default = True
 
     @property
     def is_on(self) -> bool | None:

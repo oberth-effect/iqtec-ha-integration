@@ -9,6 +9,7 @@ from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import MANUAL_SWITCHES
 from .coordinator import IqTecConfigEntry
 from .entity import IqTecVariableEntity
 
@@ -35,6 +36,9 @@ async def async_setup_entry(
     numbers: list[IqTecNumber] = []
     for device_idx, device in coordinator.hub.devices.items():
         for idx, api in device.switch_apis.items():
+            if idx in MANUAL_SWITCHES:
+                # A switch in a number's clothing; the switch platform has it.
+                continue
             if api.typ == "Temperature":
                 numbers.append(IqTecTemperatureNumber(coordinator, idx, device_idx))
             elif api.typ == "Humidity":

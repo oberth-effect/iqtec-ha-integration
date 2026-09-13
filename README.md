@@ -36,6 +36,8 @@ This custom HA integration uses the [`piqtec`](https://github.com/oberth-effect/
 
 Discovered variables are numerous and largely duplicated across a typical setup, so they are **disabled by default**.
 Enable the ones you need from the device page. Entities already enabled from an earlier version keep their state.
+A few writable variables, `SYSTEM.SET_HEAT` among them, are typed as numbers in the controller's `data.xml` but only
+ever hold 0 or 1; those are offered as switches.
 
 ## Calendars
 

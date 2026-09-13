@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 
 # Addresses of the fake controller in conftest.py.
 SET_HEAT_ADDRESS = "1/1/0"
+SUMMER_ADDRESS = "1/1/2"
 METEO_LEVEL_ADDRESS = "1/8/1"
 
 ENTRY_DATA = {
@@ -50,18 +51,30 @@ async def enable(hass: HomeAssistant, entry: MockConfigEntry, *wanted: tuple[str
     return entity_ids
 
 
-async def test_set_heat_is_enabled_out_of_the_box(hass: HomeAssistant, mock_controller) -> None:
-    """The one switch worth having without a visit to the registry, and it works."""
-    await setup_entry(hass)
-    switch = "switch.system_set_heat"
-    state = hass.states.get(switch)
-    assert state is not None
-    assert state.state == "off"
-    assert not er.async_get(hass).async_get(switch).hidden
+async def test_a_manual_switch_is_a_switch_despite_its_numeric_type(hass: HomeAssistant, mock_controller) -> None:
+    """SET_HEAT is a byte in data.xml but only ever 0 or 1, so it is a switch and not a number."""
+    entry = await setup_entry(hass)
+    registry = er.async_get(hass)
+    assert registry.async_get_entity_id("number", DOMAIN, f"{entry.entry_id}-SYSTEM.SET_HEAT") is None
+    # Like every other discovered variable it waits to be enabled.
+    (switch,) = await enable(hass, entry, ("switch", "SYSTEM.SET_HEAT"))
+    assert hass.states.get(switch).state == "off"
 
     await hass.services.async_call(SWITCH_DOMAIN, SERVICE_TURN_ON, {ATTR_ENTITY_ID: switch}, blocking=True)
 
     assert mock_controller.values[SET_HEAT_ADDRESS] == "1"
+    assert hass.states.get(switch).state == "on"
+
+
+async def test_on_off_variables_are_switches(hass: HomeAssistant, mock_controller) -> None:
+    """A writable OnOff variable is a switch by type, disabled until asked for like the rest."""
+    entry = await setup_entry(hass)
+    (switch,) = await enable(hass, entry, ("switch", "SYSTEM.Summer"))
+    assert hass.states.get(switch).state == "off"
+
+    await hass.services.async_call(SWITCH_DOMAIN, SERVICE_TURN_ON, {ATTR_ENTITY_ID: switch}, blocking=True)
+
+    assert mock_controller.values[SUMMER_ADDRESS] == "1"
     assert hass.states.get(switch).state == "on"
 
 
