@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import BURST_AFTER_COMMAND, DOMAIN
 from .coordinator import IqTecCoordinator
 
 MANUFACTURER = "IQtec/Kobra"
@@ -38,7 +38,7 @@ class IqTecEntity(CoordinatorEntity[IqTecCoordinator]):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}-{idx}"
 
     async def _async_command(self, func, *args: Any) -> None:
-        """Run a blocking controller command, then refresh.
+        """Run a blocking controller command, then poll quickly for a while.
 
         piqtec reports every failure as an IQtecError. A value it cannot
         transmit is the caller's mistake; anything else is the controller's.
@@ -49,7 +49,7 @@ class IqTecEntity(CoordinatorEntity[IqTecCoordinator]):
             raise ServiceValidationError(f"{self.idx}: {err}") from err
         except IQtecError as err:
             raise HomeAssistantError(f"{self.idx}: {err}") from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_request_burst(BURST_AFTER_COMMAND)
 
 
 class IqTecUnitEntity[S](IqTecEntity):

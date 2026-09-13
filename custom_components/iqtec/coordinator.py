@@ -6,6 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
 import logging
+import math
 
 from piqtec import CalendarState, Controller, IQtecError, State
 from piqtec.type_helpers import RequestSet
@@ -15,7 +16,7 @@ from homeassistant.const import CONF_SCAN_INTERVAL
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CALENDAR_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import BURST_INTERVAL, CALENDAR_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .monitor import PollRecord, RequestMonitor
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,6 +58,12 @@ class IqTecCoordinator(DataUpdateCoordinator[State]):
     can be built from real data. From then on only what an enabled entity has
     asked for is read: rooms and covers as whole structures, generic variables
     one by one, and nothing at all for the many variables that stay disabled.
+
+    A command starts a burst: the controller is read right away and then at the
+    burst interval for a while, so the change shows up without waiting for the
+    regular poll. The base class re-arms its timer after every refresh with
+    whatever ``update_interval`` holds, so switching that value at the end of a
+    poll changes the cadence from the very next one.
     """
 
     config_entry: IqTecConfigEntry
@@ -65,17 +72,20 @@ class IqTecCoordinator(DataUpdateCoordinator[State]):
         self, hass: HomeAssistant, config_entry: IqTecConfigEntry, hub: Controller, monitor: RequestMonitor
     ) -> None:
         """Initialize IQtec coordinator."""
-        seconds = config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        self.scan_interval = timedelta(seconds=config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+        # A burst never polls slower than the user asked for.
+        self.burst_interval = min(timedelta(seconds=BURST_INTERVAL), self.scan_interval)
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN} ({config_entry.unique_id})",
             config_entry=config_entry,
-            update_interval=timedelta(seconds=seconds),
+            update_interval=self.scan_interval,
         )
         self.hub = hub
         self.monitor = monitor
         self._discovering = True
+        self._burst_polls_left = 0
         self._units: set[str] = set()
         self._variables: defaultdict[str, set[str]] = defaultdict(set)
         self._stats_listeners: list[CALLBACK_TYPE] = []
@@ -124,7 +134,7 @@ class IqTecCoordinator(DataUpdateCoordinator[State]):
             sum(len(names) for names in self._variables.values()),
             len(plan.devices),
             len(plan.paths),
-            self.update_interval,
+            self.scan_interval,
         )
 
     @callback
@@ -189,7 +199,41 @@ class IqTecCoordinator(DataUpdateCoordinator[State]):
         finally:
             self.monitor.stats.last_poll = record
             self.monitor.poll_finished(error)
+            self._async_pick_interval(error)
             self._async_notify_stats()
+
+    # -- bursts ------------------------------------------------------------
+
+    @property
+    def burst_polls_left(self) -> int:
+        """Polls still to come at the burst interval after the one already due."""
+        return self._burst_polls_left
+
+    @callback
+    def async_extend_burst(self, seconds: float) -> None:
+        """Keep polling at the burst interval for at least ``seconds`` more."""
+        polls = math.ceil(seconds / self.burst_interval.total_seconds())
+        self._burst_polls_left = max(self._burst_polls_left, polls)
+
+    async def async_request_burst(self, seconds: float) -> None:
+        """Read the controller now, then keep reading it quickly for ``seconds``."""
+        self.async_extend_burst(seconds)
+        await self.async_request_refresh()
+
+    @callback
+    def _async_pick_interval(self, error: BaseException | None) -> None:
+        """Set how long the base class waits before the poll after this one.
+
+        A failed poll ends the burst: a controller that cannot be reached is
+        not helped by being asked more often.
+        """
+        if error is not None:
+            self._burst_polls_left = 0
+        if self._burst_polls_left:
+            self._burst_polls_left -= 1
+            self.update_interval = self.burst_interval
+        else:
+            self.update_interval = self.scan_interval
 
     # -- statistics --------------------------------------------------------
 

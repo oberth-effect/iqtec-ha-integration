@@ -6,6 +6,9 @@ from piqtec import IQtecConnectionError
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
 from custom_components.iqtec.const import (
+    BURST_AFTER_COMMAND,
+    BURST_INTERVAL,
+    BURST_WHILE_MOVING,
     CALENDAR_SCAN_INTERVAL,
     CONF_CORRECTION_TIMEOUT,
     CONF_COVER_USE_SHORT_TILT,
@@ -13,8 +16,10 @@ from custom_components.iqtec.const import (
     DOMAIN,
 )
 from custom_components.iqtec.diagnostics import async_get_config_entry_diagnostics
+from homeassistant.components.climate import ATTR_HVAC_MODE, DOMAIN as CLIMATE_DOMAIN, SERVICE_SET_HVAC_MODE, HVACMode
+from homeassistant.components.cover import DOMAIN as COVER_DOMAIN, SERVICE_CLOSE_COVER
 from homeassistant.config_entries import RELOAD_AFTER_UPDATE_DELAY
-from homeassistant.const import CONF_HOST, CONF_SCAN_INTERVAL, STATE_UNAVAILABLE
+from homeassistant.const import ATTR_ENTITY_ID, CONF_HOST, CONF_SCAN_INTERVAL, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
@@ -28,6 +33,15 @@ PUMP_ADDRESS = "1/7/"
 METEO_ADDRESS = "1/8/"
 SET_HEAT_ADDRESS = "1/1/0"
 PUMP_OUT_ADDRESS = "1/7/0"
+SUNBLIND_POSITION_ADDRESS = "1/4/1"
+SUNBLIND_OUT_DN_ADDRESS = "1/4/6"
+
+CLIMATE = "climate.obyvak"
+COVER = "cover.okno"
+
+# Long enough to reach the next poll of a burst, too short to reach a regular one.
+BURST_TICK = BURST_INTERVAL + 1
+QUICK_POLLS = BURST_AFTER_COMMAND // BURST_INTERVAL
 
 ENTRY_DATA = {
     CONF_HOST: "iqtec.home",
@@ -232,7 +246,109 @@ async def test_diagnostics_describe_the_polling(hass: HomeAssistant, mock_contro
     assert diagnostics["controller"]["rooms"] == ["R1"]
     assert diagnostics["polling"]["discovering"] is False
     assert diagnostics["polling"]["scan_interval"] == DEFAULT_SCAN_INTERVAL
+    assert diagnostics["polling"]["burst_interval"] == BURST_INTERVAL
+    assert diagnostics["polling"]["burst_polls_left"] == 0
+    assert diagnostics["polling"]["current_interval"] == DEFAULT_SCAN_INTERVAL
     assert ROOM_ADDRESS in diagnostics["polling"]["addresses"]
     assert diagnostics["polling"]["units"] == ["R1", "R1_SUNBLIND_1"]
     assert diagnostics["stats"]["polls"] >= 2
     assert diagnostics["stats"]["failed_polls"] == 0
+
+
+async def test_a_command_is_followed_by_a_burst_of_quick_polls(hass: HomeAssistant, mock_controller) -> None:
+    """After a command the controller is read every few seconds for a while, then at the usual pace again."""
+    entry = await setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    await poll(hass)
+    # Nothing is due within a burst tick while nothing has happened.
+    idle = len(mock_controller.requests)
+    await poll(hass, seconds=BURST_TICK)
+    assert len(mock_controller.requests) == idle
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN, SERVICE_SET_HVAC_MODE, {ATTR_ENTITY_ID: CLIMATE, ATTR_HVAC_MODE: HVACMode.OFF}, blocking=True
+    )
+    await hass.async_block_till_done()
+    # The command itself and the read that follows it straight away.
+    assert len(mock_controller.requests) == idle + 2
+    assert coordinator.update_interval == timedelta(seconds=BURST_INTERVAL)
+
+    # Diagnostics keep reporting the configured interval next to the burst.
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["polling"]["scan_interval"] == DEFAULT_SCAN_INTERVAL
+    assert diagnostics["polling"]["current_interval"] == BURST_INTERVAL
+    assert diagnostics["polling"]["burst_polls_left"] == QUICK_POLLS - 1
+
+    for n in range(1, QUICK_POLLS + 1):
+        await poll(hass, seconds=BURST_TICK)
+        assert len(mock_controller.requests) == idle + 2 + n, f"quick poll {n} did not happen"
+
+    # The burst is over: nothing within a tick, the regular poll on time.
+    assert coordinator.update_interval == timedelta(seconds=DEFAULT_SCAN_INTERVAL)
+    await poll(hass, seconds=BURST_TICK)
+    assert len(mock_controller.requests) == idle + 2 + QUICK_POLLS
+    await poll(hass)
+    assert len(mock_controller.requests) == idle + 3 + QUICK_POLLS
+
+
+async def test_a_failed_poll_ends_the_burst(hass: HomeAssistant, mock_controller) -> None:
+    """An unreachable controller is not asked more often for it."""
+    entry = await setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+    await hass.services.async_call(COVER_DOMAIN, SERVICE_CLOSE_COVER, {ATTR_ENTITY_ID: COVER}, blocking=True)
+    assert coordinator.update_interval == timedelta(seconds=BURST_INTERVAL)
+
+    mock_controller.fail_with = IQtecConnectionError("Cannot reach iqtec.home: timed out")
+    await poll(hass, seconds=BURST_TICK)
+
+    assert hass.states.get(COVER).state == STATE_UNAVAILABLE
+    assert coordinator.burst_polls_left == 0
+    assert coordinator.update_interval == timedelta(seconds=DEFAULT_SCAN_INTERVAL)
+
+
+async def test_a_moving_cover_keeps_the_burst_going(hass: HomeAssistant, mock_controller) -> None:
+    """The quick polls last as long as the blind moves, and a little beyond."""
+    entry = await setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+
+    await hass.services.async_call(COVER_DOMAIN, SERVICE_CLOSE_COVER, {ATTR_ENTITY_ID: COVER}, blocking=True)
+    # The motor runs for longer than the command's own burst would cover.
+    mock_controller.values[SUNBLIND_OUT_DN_ADDRESS] = "1"
+    for step in range(1, QUICK_POLLS + 4):
+        mock_controller.values[SUNBLIND_POSITION_ADDRESS] = str(100 * step)
+        before = len(mock_controller.requests)
+        await poll(hass, seconds=BURST_TICK)
+        assert len(mock_controller.requests) == before + 1, f"no quick poll while moving, step {step}"
+        assert hass.states.get(COVER).state == "closing"
+
+    # The blind stops: the quick polls run on for a moment, then the regular pace returns.
+    mock_controller.values[SUNBLIND_OUT_DN_ADDRESS] = "0"
+    mock_controller.values[SUNBLIND_POSITION_ADDRESS] = "1000"
+    await poll(hass, seconds=BURST_TICK)
+    assert hass.states.get(COVER).state == "closed"
+    for _ in range(BURST_WHILE_MOVING // BURST_INTERVAL):
+        await poll(hass, seconds=BURST_TICK)
+    assert coordinator.update_interval == timedelta(seconds=DEFAULT_SCAN_INTERVAL)
+    before = len(mock_controller.requests)
+    await poll(hass, seconds=BURST_TICK)
+    assert len(mock_controller.requests) == before
+
+
+async def test_a_cover_without_motor_outputs_is_judged_by_its_position(hass: HomeAssistant, mock_controller) -> None:
+    """An installation that hides the outputs still gets quick polls while the position changes."""
+    sunblind = mock_controller.sunblinds["R1_SUNBLIND_1"]
+    del sunblind.apis["out_up_1"], sunblind.apis["out_dn_1"]
+    entry = await setup_entry(hass)
+    coordinator = entry.runtime_data.coordinator
+
+    await hass.services.async_call(COVER_DOMAIN, SERVICE_CLOSE_COVER, {ATTR_ENTITY_ID: COVER}, blocking=True)
+    for step in range(1, QUICK_POLLS + 4):
+        mock_controller.values[SUNBLIND_POSITION_ADDRESS] = str(100 * step)
+        before = len(mock_controller.requests)
+        await poll(hass, seconds=BURST_TICK)
+        assert len(mock_controller.requests) == before + 1, f"no quick poll while moving, step {step}"
+
+    # Without the outputs Home Assistant never sees it closing, only the position on its way.
+    assert hass.states.get(COVER).state == "open"
+    assert hass.states.get(COVER).attributes["current_position"] == 100 - 10 * (QUICK_POLLS + 3)
+    assert coordinator.burst_polls_left == BURST_WHILE_MOVING // BURST_INTERVAL

@@ -40,7 +40,10 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: IqTecCo
             "devices": {idx: len(device.all_apis) for idx, device in sorted(hub.devices.items())},
         },
         "polling": {
-            "scan_interval": coordinator.update_interval.total_seconds() if coordinator.update_interval else None,
+            "scan_interval": coordinator.scan_interval.total_seconds(),
+            "burst_interval": coordinator.burst_interval.total_seconds(),
+            "burst_polls_left": coordinator.burst_polls_left,
+            "current_interval": coordinator.update_interval.total_seconds() if coordinator.update_interval else None,
             "calendar_scan_interval": (
                 data.calendars.update_interval.total_seconds() if data.calendars.update_interval else None
             ),

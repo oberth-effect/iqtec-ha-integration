@@ -25,7 +25,7 @@ This custom HA integration uses the [`piqtec`](https://github.com/oberth-effect/
 
 | Option           | Meaning                                                                                                     |
 |------------------|-------------------------------------------------------------------------------------------------------------|
-| Scan interval    | How often rooms, covers and enabled variables are read, in seconds (default 15, from 5 to 300). Calendars are read every 5 minutes regardless. |
+| Scan interval    | How often rooms, covers and enabled variables are read, in seconds (default 15, from 5 to 300). Calendars are read every 5 minutes regardless, and a command is followed by a short burst of quicker reads; see [Data updates](#data-updates). |
 | Calendar display | How each calendar is shown; see [Telling a calendar what it really is](#telling-a-calendar-what-it-really-is). |
 
 ## Available Platforms
@@ -125,8 +125,11 @@ override the schedule without changing it. Editing goes through
 ## Data updates
 
 The controller is polled over its local HTTP interface every 15 seconds by default (see [Options](#options)), and
-calendars every 5 minutes because only an editor changes them. A command sent from Home Assistant requests an
-immediate refresh, so the UI does not wait for the next poll.
+calendars every 5 minutes because only an editor changes them. A command sent from Home Assistant is followed by a
+burst: the controller is read straight away and then every 2 seconds for the next 10 seconds, so the UI shows the
+change without waiting for the next poll. A cover found still moving keeps the burst going for another 10 seconds,
+whether Home Assistant or a wall switch set it in motion, so its position follows the blind. A poll that fails ends
+the burst; an unreachable controller is not asked more often for it.
 
 Only what an enabled entity needs is read: rooms and covers as whole structures, other variables one by one. The
 many variables that stay disabled cost the controller nothing. Enabling an entity adds its variable to the poll

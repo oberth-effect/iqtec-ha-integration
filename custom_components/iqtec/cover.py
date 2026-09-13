@@ -13,10 +13,11 @@ from homeassistant.components.cover import (
     CoverEntity,
     CoverEntityFeature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import BURST_WHILE_MOVING
 from .coordinator import IqTecConfigEntry, IqTecCoordinator
 from .entity import MANUFACTURER, IqTecUnitEntity, device_identifiers
 
@@ -50,6 +51,7 @@ class IqTecCover(IqTecUnitEntity[SunblindState], CoverEntity):
         """Initialise IQtec Cover."""
         super().__init__(coordinator, idx)
         self._short_tilt = short_tilt
+        self._last_seen = (self.iqtec_state.position, self.iqtec_state.rotation)
 
         self._attr_supported_features = (
             CoverEntityFeature.OPEN
@@ -105,6 +107,26 @@ class IqTecCover(IqTecUnitEntity[SunblindState], CoverEntity):
     def is_opening(self) -> bool:
         """Return cover opening."""
         return bool(self.iqtec_state.out_up_1 or self.iqtec_state.out_up_2)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Keep the polls quick while the blind is on the move."""
+        if self.available and self._moved():
+            self.coordinator.async_extend_burst(BURST_WHILE_MOVING)
+        super()._handle_coordinator_update()
+
+    def _moved(self) -> bool:
+        """Whether the blind is moving, or has moved since the last poll.
+
+        The motor outputs say so directly. An installation that does not expose
+        them is judged by its position and tilt changing instead.
+        """
+        state = self.iqtec_state
+        seen, self._last_seen = self._last_seen, (state.position, state.rotation)
+        outputs = (state.out_up_1, state.out_up_2, state.out_dn_1, state.out_dn_2)
+        if any(output is not None for output in outputs):
+            return any(outputs)
+        return seen != self._last_seen
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the cover."""

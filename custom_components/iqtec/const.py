@@ -16,6 +16,13 @@ MIN_SCAN_INTERVAL = 5
 MAX_SCAN_INTERVAL = 300
 # Calendars only change when somebody edits them.
 CALENDAR_SCAN_INTERVAL = timedelta(minutes=5)
+# After a command the controller is read right away and then every
+# BURST_INTERVAL seconds for BURST_AFTER_COMMAND seconds, so what the command
+# changed shows up without waiting for the regular poll. A cover found still
+# moving keeps the quick polls going for another BURST_WHILE_MOVING seconds.
+BURST_INTERVAL = 2
+BURST_AFTER_COMMAND = 10
+BURST_WHILE_MOVING = 10
 
 SERVICE_SET_CALENDAR = "set_calendar"
 
