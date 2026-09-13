@@ -132,8 +132,6 @@ class FakeController:
             "PUMP": Device(self, "PUMP", APIS),
             "SYSTEM": Device(self, "SYSTEM", APIS),
         }
-        self.calendars = {"_CALENDAR_00": MagicMock(index=0)}
-
         self.write_calendar = MagicMock()
         self.close = MagicMock()
 
@@ -142,6 +140,15 @@ class FakeController:
 
     def __exit__(self, *args: object) -> bool:
         return False
+
+    @property
+    def calendars(self) -> dict[str, MagicMock]:
+        """The calendars data.xml declares, numbered as piqtec numbers them.
+
+        Derived from the fixture so a test can add one before setting the entry
+        up, the way an installation with several schedules has them.
+        """
+        return {idx: MagicMock(index=int(idx.rpartition("_")[2])) for idx in self._calendars}
 
     @property
     def last_paths(self) -> list[str]:

@@ -30,7 +30,10 @@ This custom HA integration uses the [`piqtec`](https://github.com/oberth-effect/
 
 ## Available Platforms
 
-- Climate (currently heating only, cooling not implemented),
+- Climate (currently heating only, cooling not implemented). A room's preset picks
+  the calendar it follows, alongside Away and Anti-Freeze; only calendars shown as
+  `TEMPERATURE` are offered, since nothing else sets a room's target. See
+  [Telling a calendar what it really is](#telling-a-calendar-what-it-really-is).
 - Cover (controls sunblinds, windows, etc.),
 - Sensor, Binary Sensor, Switch, Number, Select: all other variables discovered by `piqtec`. On/Off/Auto variables
   are selects with the positions Off, On and Auto; read-only ones are sensors with the same three states, each with
@@ -85,10 +88,15 @@ on or off. The OEM application guesses from the calendar's name, matching Czech
 keywords like *cirkulace* or *zavlaha*; this integration asks instead.
 
 **Settings → Devices & Services → IQtec → Configure** offers a display type per
-calendar. It changes only how the calendar is presented — `levels`,
-`level_names`, the calendar entity's event summaries and what the card draws.
-The controller's own type stays visible as `calendar_type`, and nothing is
-written to the controller.
+calendar. It changes how the calendar is presented — `levels`, `level_names`,
+the calendar entity's event summaries and what the card draws — and which
+calendars a room can be pointed at: a climate entity offers the `TEMPERATURE`
+ones as presets and leaves the rest out. The controller's own type stays visible
+as `calendar_type`, and nothing is written to the controller.
+
+A room already following a calendar that is not shown as `TEMPERATURE` still
+reports it, and it stays in that room's preset list for as long as it is in use,
+so the entity never shows a preset it does not offer.
 
 | Display type | Lanes | Levels shown as          |
 |--------------|-------|--------------------------|

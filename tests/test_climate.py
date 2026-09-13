@@ -1,14 +1,16 @@
 """Tests for the commands the climate and cover entities send to the controller."""
 
-from piqtec import IQtecConnectionError
+from piqtec import CalendarState, CalendarType, IQtecConnectionError
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.iqtec.const import CONF_CORRECTION_TIMEOUT, CONF_COVER_USE_SHORT_TILT, DOMAIN
+from custom_components.iqtec.climate import PRESET_ANTIFREEZE
+from custom_components.iqtec.const import CONF_CORRECTION_TIMEOUT, CONF_COVER_USE_SHORT_TILT, CONF_DISPLAY_TYPES, DOMAIN
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
     ATTR_PRESET_MODE,
     DOMAIN as CLIMATE_DOMAIN,
+    PRESET_AWAY,
     SERVICE_SET_HVAC_MODE,
     SERVICE_SET_PRESET_MODE,
     HVACMode,
@@ -31,14 +33,22 @@ ENTRY_DATA = {
 
 CLIMATE = "climate.obyvak"
 CALENDAR_PRESET = "(0) GeneralProfile"
+BLIND_PRESET = "(1) Zaluzie"
 
 
-async def setup_entry(hass: HomeAssistant) -> MockConfigEntry:
-    entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_DATA, unique_id="iqtec_platform_iqtec.home")
+async def setup_entry(hass: HomeAssistant, options: dict | None = None) -> MockConfigEntry:
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=ENTRY_DATA, options=options or {}, unique_id="iqtec_platform_iqtec.home"
+    )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     return entry
+
+
+def add_blind_calendar(calendars: dict[str, CalendarState], calendar_type=CalendarType.BLIND) -> None:
+    """A second schedule the rooms have no use for."""
+    calendars["_CALENDAR_01"] = CalendarState(name="Zaluzie", calendar_type=calendar_type)
 
 
 def writes_since(mock_controller, count: int) -> list[list[tuple[str, str]]]:
@@ -57,6 +67,70 @@ async def test_calendars_are_offered_as_presets_without_another_read(hass: HomeA
     presets = hass.states.get(CLIMATE).attributes["preset_modes"]
     assert CALENDAR_PRESET in presets
     assert hass.states.get(CLIMATE).attributes["preset_mode"] == CALENDAR_PRESET
+
+
+async def test_only_temperature_calendars_are_offered_as_presets(
+    hass: HomeAssistant, mock_controller, calendars
+) -> None:
+    """A blind schedule sets no room temperature, so it is not a preset."""
+    add_blind_calendar(calendars)
+    await setup_entry(hass)
+
+    presets = hass.states.get(CLIMATE).attributes["preset_modes"]
+    assert presets == [CALENDAR_PRESET, PRESET_AWAY, PRESET_ANTIFREEZE]
+
+
+async def test_a_display_type_override_decides_which_calendars_are_presets(
+    hass: HomeAssistant, mock_controller, calendars
+) -> None:
+    """The user's typing wins over data.xml, both ways round."""
+    # The controller calls both temperature calendars; the user knows better.
+    add_blind_calendar(calendars, calendar_type=CalendarType.TEMPERATURE)
+    await setup_entry(hass, options={CONF_DISPLAY_TYPES: {"_CALENDAR_01": "ON_OFF"}})
+
+    assert hass.states.get(CLIMATE).attributes["preset_modes"] == [CALENDAR_PRESET, PRESET_AWAY, PRESET_ANTIFREEZE]
+
+    # And a calendar the controller mistypes is offered once the user says so.
+    await hass.config_entries.async_unload(hass.config_entries.async_entries(DOMAIN)[0].entry_id)
+    await hass.async_block_till_done()
+    calendars["_CALENDAR_01"] = CalendarState(name="Zaluzie", calendar_type=CalendarType.BLIND)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    hass.config_entries.async_update_entry(entry, options={CONF_DISPLAY_TYPES: {"_CALENDAR_01": "TEMPERATURE"}})
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    presets = hass.states.get(CLIMATE).attributes["preset_modes"]
+    assert presets == [CALENDAR_PRESET, BLIND_PRESET, PRESET_AWAY, PRESET_ANTIFREEZE]
+
+
+async def test_the_calendar_in_use_is_listed_even_when_it_is_not_a_temperature_one(
+    hass: HomeAssistant, mock_controller, calendars
+) -> None:
+    """What the entity reports is always in the list it offers."""
+    add_blind_calendar(calendars)
+    mock_controller.values[CALENDAR_NUMBER_ADDRESS] = "1"
+    await setup_entry(hass)
+
+    state = hass.states.get(CLIMATE)
+    assert state.attributes["preset_mode"] == BLIND_PRESET
+    assert state.attributes["preset_modes"] == [CALENDAR_PRESET, BLIND_PRESET, PRESET_AWAY, PRESET_ANTIFREEZE]
+
+
+async def test_a_calendar_that_is_not_offered_is_refused(hass: HomeAssistant, mock_controller, calendars) -> None:
+    """Home Assistant validates the preset against the list, so a blind schedule cannot be chosen."""
+    add_blind_calendar(calendars)
+    await setup_entry(hass)
+    before = len(mock_controller.requests)
+
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: CLIMATE, ATTR_PRESET_MODE: BLIND_PRESET},
+            blocking=True,
+        )
+
+    assert writes_since(mock_controller, before) == []
 
 
 @pytest.mark.parametrize(

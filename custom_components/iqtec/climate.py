@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from piqtec import MissingVariableError, RoomCorrectionMode, RoomMode, RoomState
+from piqtec import CalendarType, MissingVariableError, RoomCorrectionMode, RoomMode, RoomState
 from piqtec.type_helpers import RequestSet
 
 from homeassistant.components.climate import (
@@ -21,6 +21,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .calendar_schedule import display_type
 from .coordinator import IqTecConfigEntry, IqTecCoordinator
 from .entity import MANUFACTURER, IqTecUnitEntity, device_identifiers
 
@@ -40,11 +41,21 @@ async def async_setup_entry(
     data = config_entry.runtime_data
     coordinator = data.coordinator
     # The calendar coordinator has read every calendar already. A room refers
-    # to its calendar by the number in the calendar's address.
-    calendars = {
-        coordinator.hub.calendars[idx].index: state.name or idx for idx, state in (data.calendars.data or {}).items()
-    }
-    async_add_entities(IqTecClimate(coordinator, idx, calendars, data.correction_time) for idx in coordinator.hub.rooms)
+    # to its calendar by the number in the calendar's address. Every calendar is
+    # named, so a room can always report the one it is on, but only the
+    # temperature ones are offered to choose from: a blind or on/off schedule
+    # drives something else entirely. What the user has typed a calendar as
+    # decides, not what data.xml declares; that is what the override is for.
+    calendars: dict[int, str] = {}
+    temperature: set[int] = set()
+    for idx, state in (data.calendars.data or {}).items():
+        number = coordinator.hub.calendars[idx].index
+        calendars[number] = state.name or idx
+        if display_type(config_entry, idx, state) is CalendarType.TEMPERATURE:
+            temperature.add(number)
+    async_add_entities(
+        IqTecClimate(coordinator, idx, calendars, temperature, data.correction_time) for idx in coordinator.hub.rooms
+    )
 
 
 class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
@@ -61,11 +72,13 @@ class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
         coordinator: IqTecCoordinator,
         idx: str,
         calendars: dict[int, str],
+        temperature_calendars: set[int],
         manual_time: int,
     ) -> None:
         """Initialise IQtec Climate."""
         super().__init__(coordinator, idx)
         self._calendars = {number: f"({number}) {name}" for number, name in calendars.items()}
+        self._temperature_calendars = temperature_calendars
         self.manual_time = manual_time
         self._attr_device_info = DeviceInfo(
             manufacturer=MANUFACTURER,
@@ -129,8 +142,21 @@ class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
 
     @property
     def preset_modes(self) -> list[str]:
-        """Preset Modes List."""
-        return [*self._calendars.values(), PRESET_AWAY, PRESET_ANTIFREEZE]
+        """Preset Modes List.
+
+        The temperature calendars, plus the one the room is on if that is not
+        one of them, so what the entity reports is always in the list it offers.
+        """
+        in_use = self.iqtec_state.calendar_number
+        return [
+            *(
+                name
+                for number, name in self._calendars.items()
+                if number in self._temperature_calendars or number == in_use
+            ),
+            PRESET_AWAY,
+            PRESET_ANTIFREEZE,
+        ]
 
     @property
     def target_temperature(self) -> float | None:
