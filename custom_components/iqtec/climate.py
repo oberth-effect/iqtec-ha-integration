@@ -15,8 +15,8 @@ from homeassistant.components.climate import (
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
-    UnitOfTemperature,
 )
+from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
