@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import sys
 
-from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode, UnitOfTemperature
-from homeassistant.const import PERCENTAGE
+from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
