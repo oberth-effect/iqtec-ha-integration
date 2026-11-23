@@ -31,6 +31,10 @@ PARALLEL_UPDATES = 0
 
 PRESET_ANTIFREEZE = "Anti-Freeze"
 
+# Home Assistant 2026.11 renamed the climate temperature API to native_* and
+# drops the old names in 2027.11. Older versions know only the old names.
+HAS_NATIVE_TEMPERATURES = hasattr(ClimateEntity, "native_temperature_unit")
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -65,7 +69,7 @@ class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.AUTO]
     _attr_precision = 0.1
     _attr_target_temperature_step = 0.1
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
 
     def __init__(
         self,
@@ -96,7 +100,7 @@ class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
         return self._hub.rooms[self.idx]
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         """Current temperature."""
         return self.iqtec_state.actual_temperature
 
@@ -159,9 +163,14 @@ class IqTecClimate(IqTecUnitEntity[RoomState], ClimateEntity):
         ]
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         """Current target temperature."""
         return self.iqtec_state.requested_temperature
+
+    if not HAS_NATIVE_TEMPERATURES:
+        _attr_temperature_unit = UnitOfTemperature.CELSIUS
+        current_temperature = native_current_temperature
+        target_temperature = native_target_temperature
 
     def _write_room(self, values: dict[str, Any]) -> None:
         """Write several room variables in one request.

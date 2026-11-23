@@ -4,19 +4,21 @@ from piqtec import CalendarState, CalendarType, IQtecConnectionError
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.iqtec.climate import PRESET_ANTIFREEZE
+from custom_components.iqtec.climate import PRESET_ANTIFREEZE, IqTecClimate
 from custom_components.iqtec.const import CONF_CORRECTION_TIMEOUT, CONF_COVER_USE_SHORT_TILT, CONF_DISPLAY_TYPES, DOMAIN
 from homeassistant.components.climate import (
+    ATTR_CURRENT_TEMPERATURE,
     ATTR_HVAC_MODE,
     ATTR_PRESET_MODE,
     DOMAIN as CLIMATE_DOMAIN,
     PRESET_AWAY,
     SERVICE_SET_HVAC_MODE,
     SERVICE_SET_PRESET_MODE,
+    ClimateEntity,
     HVACMode,
 )
 from homeassistant.components.cover import DOMAIN as COVER_DOMAIN, SERVICE_OPEN_COVER
-from homeassistant.const import ATTR_ENTITY_ID, CONF_HOST
+from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE, CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
@@ -58,6 +60,36 @@ def writes_since(mock_controller, count: int) -> list[list[tuple[str, str]]]:
         for request in mock_controller.requests[count:]
         if request.setters
     ]
+
+
+async def test_the_room_temperatures_are_reported(hass: HomeAssistant, mock_controller) -> None:
+    """The measured and the requested temperature, in degrees Celsius as the controller has them."""
+    await setup_entry(hass)
+
+    attributes = hass.states.get(CLIMATE).attributes
+    assert attributes[ATTR_CURRENT_TEMPERATURE] == 21.0
+    assert attributes[ATTR_TEMPERATURE] == 20.5
+
+
+@pytest.mark.skipif(
+    not hasattr(ClimateEntity, "native_temperature_unit"),
+    reason="Home Assistant before 2026.11 has no native temperature API to move to",
+)
+def test_no_deprecated_temperature_api_is_provided() -> None:
+    """Home Assistant 2026.11 deprecated the climate temperature names without native_; 2027.11 drops them.
+
+    Home Assistant warns about a class that defines any of them. Whatever it
+    then rewrites in the class stays under the deprecated name too.
+    """
+    from homeassistant.helpers.deprecation import DeprecatedEntityAttr, DeprecatedEntityProperty
+
+    deprecated = {
+        name
+        for name, member in vars(ClimateEntity).items()
+        if isinstance(member, DeprecatedEntityAttr | DeprecatedEntityProperty)
+    }
+    assert "current_temperature" in deprecated
+    assert sorted(deprecated & vars(IqTecClimate).keys()) == []
 
 
 async def test_calendars_are_offered_as_presets_without_another_read(hass: HomeAssistant, mock_controller) -> None:
